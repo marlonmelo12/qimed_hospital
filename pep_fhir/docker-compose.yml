@@ -1,0 +1,25 @@
+# Mock de prontuario eletronico (PEP) com API FHIR R4: servidor HAPI FHIR com o segundo hospital simulado da rede.
+# Dados ficticios gerados e carregados por mocks/pep_fhir/gerar_pep.py. Detalhes em mocks/pep_fhir/README.md.
+#
+#   docker compose -f mocks/pep_fhir/docker-compose.yml up -d
+#   (no container do pipeline) python mocks/pep_fhir/gerar_pep.py --carregar http://pep-fhir:8080/fhir
+#
+# shortcut: banco H2 dentro do container (a imagem roda sem root e nao grava em volume novo); recriar o container
+# pede nova carga. Montar Postgres se o mock precisar sobreviver a recriacao.
+
+services:
+  pep-fhir:
+    image: hapiproject/hapi:v7.4.0
+    container_name: qimed-pep-fhir
+    environment:
+      hapi.fhir.fhir_version: R4
+      hapi.fhir.client_id_strategy: ANY
+      JAVA_TOOL_OPTIONS: -Xmx1g
+    ports:
+      - "127.0.0.1:8091:8080"
+    networks:
+      - qimed-network
+
+networks:
+  qimed-network:
+    external: true

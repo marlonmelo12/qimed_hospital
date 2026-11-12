@@ -1,0 +1,37 @@
+# Mock de um HIS estilo TASY (assistencial + faturamento) em MariaDB, para testar a ingestao hospitalar sem hospital real.
+# Dados ficticios gerados por scripts/gerar_mock_tasy.py. Detalhes em mocks/tasy/README.md.
+#
+#   docker compose -f mocks/tasy/docker-compose.yml up -d
+#
+# O seed roda so na primeira subida (volume vazio). Para recarregar: down -v e up de novo.
+
+services:
+  tasy-db:
+    image: mariadb:11.4.4
+    container_name: qimed-tasy-db
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--lower-case-table-names=0"]
+    environment:
+      MARIADB_DATABASE: TASY
+      MARIADB_USER: ${TASY_DB_USER:-tasy}
+      MARIADB_PASSWORD: ${TASY_DB_PASSWORD:-tasy_mock}
+      MARIADB_ROOT_PASSWORD: ${TASY_DB_ROOT_PASSWORD:-tasy_mock_root}
+      TZ: America/Sao_Paulo
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d:ro
+      - tasy-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      - qimed-network
+
+volumes:
+  tasy-data:
+
+networks:
+  qimed-network:
+    external: true
