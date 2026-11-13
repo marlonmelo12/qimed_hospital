@@ -1,6 +1,8 @@
 """
-Prontuario eletronico simulado em FHIR R4: segundo hospital da rede (CNES ficticio 9990002), com PEP proprio.
+Prontuario eletronico simulado em FHIR R4 do mesmo hospital do mock TASY (mocks/tasy), com ids proprios.
 
+Os pacientes sao os do TASY (nome, sexo, nascimento e CPF do seed). Quem esta sem CPF no TASY ganha um CPF so no
+PEP, como acontece quando o HIS deixa o documento em branco: esses nao casam entre os sistemas.
 Gera Patient, Encounter, Condition e Observation (sinais vitais diarios das internacoes), deterministico pela
 semente. Tudo ficticio: nomes, CPFs (so com digito verificador valido), telefones e enderecos.
 
@@ -9,17 +11,22 @@ semente. Tudo ficticio: nomes, CPFs (so com digito verificador valido), telefone
 """
 import argparse
 import json
+import os
 import random
+import sys
 from collections import Counter
 from datetime import datetime, timedelta
+from functools import lru_cache
 from typing import Any, Dict, List
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "scripts"))
+from gerar_mock_tasy import Gerador  # noqa: E402
+
 SEMENTE = 20261112
+SEMENTE_TASY = 20261111  # a do seed versionado em mocks/tasy/sql/02_dados.sql.gz
+CPF_SYSTEM = "urn:oid:2.16.840.1.113883.13.237"
+SEXO = {"M": "male", "F": "female", "I": "unknown"}
 INICIO, FIM = datetime(2026, 5, 1), datetime(2026, 11, 10, 18, 0)
-NOMES = ["Ana", "Bruno", "Carla", "Diego", "Elisa", "Fábio", "Gabriela", "Hugo", "Isabel", "João", "Karina",
-         "Lucas", "Marina", "Nelson", "Olívia", "Paulo", "Renata", "Sérgio", "Tânia", "Vitor"]
-SOBRENOMES = ["Almeida", "Barros", "Costa", "Dias", "Esteves", "Farias", "Gomes", "Lopes", "Moura", "Nunes",
-              "Pires", "Rocha", "Souza", "Teixeira", "Vieira"]
 CID = "http://hl7.org/fhir/sid/icd-10"
 ACT = "http://terminology.hl7.org/CodeSystem/v3-ActCode"
 # (classe, peso, CIDs, permanencia mediana em dias)
@@ -44,24 +51,30 @@ def _iso(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S-03:00")
 
 
+@lru_cache(maxsize=1)
+def pacientes_tasy() -> List[Dict[str, Any]]:
+    """PESSOA_FISICA dos pacientes do seed: gerar() inteiro, porque cada add() consome o RNG do TASY."""
+    return [p for p in Gerador(SEMENTE_TASY).gerar()["PESSOA_FISICA"] if p["IE_FUNCIONARIO"] == "N"]
+
+
 def gerar(semente: int = SEMENTE, pacientes: int = 400) -> List[Dict[str, Any]]:
     r = random.Random(semente)
     out: List[Dict[str, Any]] = [{
-        "resourceType": "Organization", "id": "hosp-9990002", "name": "Hospital Simulado Rede Sul - Unidade Norte",
-        "identifier": [{"system": "https://saude.gov.br/fhir/sid/cnes", "value": "9990002"}]}]
-    for i in range(1, pacientes + 1):
-        nasc = datetime(r.randint(1935, 2024), r.randint(1, 12), r.randint(1, 28))
+        "resourceType": "Organization", "id": "hosp-9990001", "name": "Hospital Simulado Rede Sul",
+        "identifier": [{"system": "https://saude.gov.br/fhir/sid/cnes", "value": "9990001"}]}]
+    for i, p in enumerate(pacientes_tasy()[:pacientes], start=1):
+        nome = p["NM_PESSOA_FISICA"].split()
         out.append({
             "resourceType": "Patient", "id": f"p-{i:04d}",
-            "identifier": [{"system": "urn:oid:2.16.840.1.113883.13.237", "value": _cpf(r)}],
-            "name": [{"family": r.choice(SOBRENOMES), "given": [r.choice(NOMES)]}],
-            "telecom": [{"system": "phone", "value": f"519{r.randint(10000000, 99999999)}", "use": "mobile"}],
-            "gender": r.choices(["male", "female", "unknown"], [0.48, 0.5, 0.02])[0],
-            "birthDate": nasc.date().isoformat(),
+            "identifier": [{"system": CPF_SYSTEM, "value": p["NR_CPF"] or _cpf(r)}],
+            "name": [{"family": " ".join(nome[1:]), "given": [nome[0]]}],
+            "telecom": [{"system": "phone", "value": p["NR_TELEFONE_CELULAR"], "use": "mobile"}],
+            "gender": SEXO[p["IE_SEXO"]],
+            "birthDate": p["DT_NASCIMENTO"].isoformat(),
             "address": [{"city": "Porto Alegre", "state": "RS", "postalCode": f"9{r.randint(1000000, 1999999)}"}],
         })
     n_enc = 0
-    for i in range(1, pacientes + 1):
+    for i in range(1, len(out)):
         for _ in range(r.choice([1, 1, 2, 2, 3, 4])):
             classe, _, cids, mediana = r.choices(PERFIS, [p[1] for p in PERFIS])[0]
             entrada = INICIO + timedelta(seconds=r.randint(0, int((FIM - INICIO).total_seconds())))
@@ -81,7 +94,7 @@ def gerar(semente: int = SEMENTE, pacientes: int = 400) -> List[Dict[str, Any]]:
                 "subject": {"reference": f"Patient/p-{i:04d}"},
                 "period": {"start": _iso(entrada), **({} if aberto else {"end": _iso(alta)})},
                 "reasonCode": [{"coding": [{"system": CID, "code": cid}]}],
-                "serviceProvider": {"reference": "Organization/hosp-9990002"},
+                "serviceProvider": {"reference": "Organization/hosp-9990001"},
             }
             if not aberto:
                 enc["hospitalization"] = {"dischargeDisposition": {"coding": [{
