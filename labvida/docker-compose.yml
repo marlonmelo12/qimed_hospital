@@ -1,0 +1,35 @@
+# LabVida (ficticio): sistema de laboratorio em Postgres que o QIMED nunca viu. Entra pela Central de Conexoes.
+# Dados gerados por mocks/labvida/gerar_labvida.py. Detalhes em mocks/labvida/README.md.
+#
+#   docker compose -f mocks/labvida/docker-compose.yml up -d
+#
+# O seed roda so na primeira subida (volume vazio). Para recarregar: down -v e up de novo.
+
+services:
+  labvida-db:
+    image: postgres:16-alpine
+    container_name: qimed-labvida-db
+    environment:
+      POSTGRES_DB: labvida
+      POSTGRES_USER: ${LABVIDA_DB_USER:-labvida}
+      POSTGRES_PASSWORD: ${LABVIDA_DB_PASSWORD:-labvida_mock}
+      TZ: America/Sao_Paulo
+    ports:
+      - "127.0.0.1:5436:5432"
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d:ro
+      - labvida-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d labvida"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      - qimed-network
+
+volumes:
+  labvida-data:
+
+networks:
+  qimed-network:
+    external: true
