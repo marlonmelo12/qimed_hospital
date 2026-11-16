@@ -17,7 +17,7 @@ docker network inspect qimed-network >/dev/null 2>&1 || docker network create qi
 SISTEMAS=("$@")
 [ ${#SISTEMAS[@]} -gt 0 ] || SISTEMAS=(gnuhealth labvida erp prontosul)
 for s in tasy "${SISTEMAS[@]}"; do  # o TASY e a base do vinculo de pacientes
-  m=$s; [ "$s" = erp ] && m=erp_rh
+  m=$s; [ "$s" = erp ] && m=erp_rh; [ "$s" = mv ] && m=mv_faturamento
   echo "== subindo $m (do zero)"
   docker compose -f "mocks/$m/docker-compose.yml" down -v >/dev/null 2>&1 || true
   docker compose -f "mocks/$m/docker-compose.yml" up -d --wait --wait-timeout 600

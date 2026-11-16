@@ -38,11 +38,13 @@ SISTEMAS = {
                 username="erp", password="erp_mock", database_type="MYSQL"),
     "prontosul": dict(id=204, nome="ProntoSul (Oracle)", host="prontosul-db", port=1521, database_name="FREEPDB1",
                       username="qimed_leitura", password="leitura_mock", database_type="ORACLE"),
+    "mv": dict(id=205, nome="Hospital Sao Lucas (MV)", host="mv-db", port=1521, database_name="FREEPDB1",
+               username="qimed_leitura", password="leitura_mock", database_type="ORACLE"),
 }
 # seeds deterministicos: LabVida (gerar_labvida.esperado), ProntoSul (gerar_prontosul.py --resumo) e GNU Health
 # (mocks/gnuhealth/atribuir_cpf.py: 300 pessoas do TASY; party_party tem todas as pessoas, nao so pacientes)
 VINCULO = {"labvida": (334, 500), "prontosul": (189, 260), "gnuhealth": (300, 2048)}
-ESCOLHIDOS = sys.argv[1:] or list(SISTEMAS)
+ESCOLHIDOS = sys.argv[1:] or [s for s in SISTEMAS if s != "mv"]  # mv: em construcao
 POR_ID = {SISTEMAS[s]["id"]: SISTEMAS[s] for s in ESCOLHIDOS}
 FALHAS = []
 
