@@ -2,7 +2,8 @@
 Movimento continuo nos mocks da Central de Conexoes, para a demo se comportar como um hospital em producao: a cada
 --intervalo segundos cada banco recebe escrita nova, e a releitura incremental do QIMED tem o que buscar.
 
-- LabVida (Postgres): paciente novo, pedidos novos e pedidos coletados que viram liberados com resultado.
+- LabVida (Postgres): paciente novo, pedidos novos, pedidos coletados que viram liberados com resultado e, em 20% das
+  rodadas, um pedido coletado cancelado e apagado (exclusao na origem).
 - ERP de RH (MariaDB): plantoes 'Escalado' que ja comecaram ganham o desfecho (Trabalhado, Falta ou Atestado).
 - ProntoSul (Oracle): entrada no pronto-atendimento e alta dos que estao abertos.
 Uma fracao das escritas chega atrasada (horario de 3 min atras), como transacao que confirma depois da leitura.
@@ -64,7 +65,12 @@ def labvida(c) -> str:
         c.execute(text("INSERT INTO resultado_exame VALUES (:r, :p, :c, :d, :v, :u, :t, :t)"),
                   {"r": rid, "p": pid, "c": cod, "d": desc, "v": round(max(0.1, r.gauss(media, dp)), 2), "u": un,
                    "t": t})
-    return f"1 paciente, {len(ids)} pedidos, {len(coletados)} liberados"
+    cancelados = 0
+    if r.random() < 0.2:  # pedido cancelado e apagado da origem: a reconciliacao diaria do QIMED tem de ver
+        cancelados = c.execute(text(
+            "DELETE FROM pedido_exame WHERE id_pedido = (SELECT id_pedido FROM pedido_exame WHERE situacao = 'Coletado' "
+            "ORDER BY random() LIMIT 1)")).rowcount
+    return f"1 paciente, {len(ids)} pedidos, {len(coletados)} liberados, {cancelados} cancelados"
 
 
 def erp_rh(c) -> str:
