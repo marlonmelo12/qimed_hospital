@@ -1,0 +1,35 @@
+{
+ "pacientes": 220,
+ "vinculados_tasy": 151,
+ "consultas": 1186,
+ "glosa_por_convenio": {
+  "SAUDE LITORAL": {
+   "cobrado": 83118.0,
+   "glosado": 5567.65,
+   "linhas": 711,
+   "linhas_glosadas": 61,
+   "taxa_pct": 6.7
+  },
+  "VIDA PLENA ASSISTENCIA": {
+   "cobrado": 58716.0,
+   "glosado": 3087.32,
+   "linhas": 474,
+   "linhas_glosadas": 31,
+   "taxa_pct": 5.26
+  },
+  "UNIMAIS COOPERATIVA": {
+   "cobrado": 44227.0,
+   "glosado": 397.37,
+   "linhas": 359,
+   "linhas_glosadas": 9,
+   "taxa_pct": 0.9
+  }
+ },
+ "glosa_por_motivo_tiss": {
+  "1213": 1817.0,
+  "1702": 2573.0,
+  "1705": 996.34,
+  "1402": 2357.0,
+  "1307": 1309.0
+ }
+}

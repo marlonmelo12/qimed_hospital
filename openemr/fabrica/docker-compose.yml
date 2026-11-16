@@ -1,0 +1,30 @@
+# Fabrica do mock OpenEMR: a aplicacao inteira (OpenEMR 8.5.0 + MariaDB) roda uma vez, o popular.php grava os dados
+# pelas classes do proprio OpenEMR e o fabricar.sh tira o dump para mocks/openemr/sql. O teste so sobe o banco.
+#   bash mocks/openemr/fabrica/fabricar.sh
+services:
+  openemr-fab-db:
+    image: mariadb:11.4
+    container_name: qimed-openemr-fab-db
+    command: ["mariadbd", "--character-set-server=utf8mb4"]
+    environment:
+      MYSQL_ROOT_PASSWORD: root_fabrica
+      TZ: America/Sao_Paulo
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      retries: 60
+  openemr-fab:
+    image: openemr/openemr:8.5.0
+    container_name: qimed-openemr-fab
+    depends_on:
+      openemr-fab-db: {condition: service_healthy}
+    environment:
+      MYSQL_HOST: openemr-fab-db
+      MYSQL_ROOT_PASS: root_fabrica
+      MYSQL_USER: openemr
+      MYSQL_PASS: openemr_fabrica
+      OE_USER: admin
+      OE_PASS: admin_fabrica
+      TZ: America/Sao_Paulo
+    volumes:
+      - ./:/fabrica:ro

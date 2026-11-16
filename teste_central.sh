@@ -3,7 +3,7 @@
 # Roda da raiz do qimed_pipeline (Linux, macOS ou Git Bash no Windows), com o .env do pipeline pronto.
 #
 #   bash mocks/teste_central.sh                 # os 4 sistemas
-#   bash mocks/teste_central.sh gnuhealth erp   # so alguns (gnuhealth labvida erp prontosul)
+#   bash mocks/teste_central.sh gnuhealth erp   # so alguns (gnuhealth labvida erp prontosul mv openemr)
 #
 # Recria os bancos dos mocks (down -v): o movimento e o drift do teste alteram os dados.
 # Log em warehouse/reports/teste_central_<data>.log. Codigo de saida 0 = tudo passou.

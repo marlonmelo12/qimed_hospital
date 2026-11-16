@@ -41,12 +41,18 @@ SISTEMAS = {
                       username="qimed_leitura", password="leitura_mock", database_type="ORACLE"),
     "mv": dict(id=205, nome="Hospital Sao Lucas (MV)", host="mv-db", port=1521, database_name="FREEPDB1",
                username="qimed_leitura", password="leitura_mock", database_type="ORACLE"),
+    "openemr": dict(id=206, nome="Clinica Vale Sul (OpenEMR 8.5)", host="openemr-db", port=3306,
+                    database_name="openemr", username="qimed_leitura", password="leitura_mock", database_type="MYSQL"),
 }
+# OpenEMR: o esperado sai da fabrica (mocks/openemr/fabrica/gerar_roteiro.py), das entradas do roteiro
+with open("/opt/qimed/mocks/openemr/esperado.json", encoding="utf-8") as f:
+    ESPERADO_OPENEMR = json.load(f)
 # seeds deterministicos: LabVida (gerar_labvida.esperado), ProntoSul (gerar_prontosul.py --resumo) e GNU Health
 # (mocks/gnuhealth/atribuir_cpf.py: 300 pessoas do TASY; party_party tem todas as pessoas, nao so pacientes)
-VINCULO = {"labvida": (334, 500), "prontosul": (189, 260), "gnuhealth": (300, 2048), "mv": (148, 240)}
+VINCULO = {"labvida": (334, 500), "prontosul": (189, 260), "gnuhealth": (300, 2048), "mv": (148, 240),
+           "openemr": (ESPERADO_OPENEMR["vinculados_tasy"], ESPERADO_OPENEMR["pacientes"])}
 FINANCEIRO = {"conta", "item_conta", "retorno_glosa"}
-ESCOLHIDOS = sys.argv[1:] or [s for s in SISTEMAS if s != "mv"]
+ESCOLHIDOS = sys.argv[1:] or [s for s in SISTEMAS if s not in ("mv", "openemr")]
 POR_ID = {SISTEMAS[s]["id"]: SISTEMAS[s] for s in ESCOLHIDOS}
 FALHAS = []
 
@@ -95,28 +101,34 @@ def checar(cond, msg):
         FALHAS.append(msg)
 
 
-def checar_glosa(e):
-    """Gold de glosa da conexao contra o esperado da semente (a 0,01: semente em float, Gold em decimal)."""
+def checar_glosa(e, s="mv"):
+    """Gold de glosa da conexao contra o esperado da semente (a 0,01: semente em float, Gold em decimal).
+    MV: convenio pelo codigo; OpenEMR: pelo nome (o id do convenio quem da e o proprio OpenEMR)."""
     import duckdb
-    sys.path.insert(0, "/opt/qimed/mocks/mv_faturamento")
-    from gerar_mv import esperado
-    esp, intel = esperado(), e.get("inteligencia") or {}
-    obtido = {c["convenio"]: c for c in intel.get("convenios", [])}
+    if s == "mv":
+        sys.path.insert(0, "/opt/qimed/mocks/mv_faturamento")
+        from gerar_mv import esperado
+        esp = esperado()
+    else:
+        esp = ESPERADO_OPENEMR
+    intel = e.get("inteligencia") or {}
+    obtido = {c["convenio"] if s == "mv" else c["nome"]: c for c in intel.get("convenios", [])}
     for cv, v in esp["glosa_por_convenio"].items():
         o = obtido.get(str(cv), {})
         checar(abs(o.get("valor_glosado", -1) - v["glosado"]) <= 0.01 and abs(
                o.get("valor_cobrado", -1) - v["cobrado"]) <= 0.01,
-               f"mv convenio {cv}: glosado {o.get('valor_glosado')} de {o.get('valor_cobrado')} "
+               f"{s} convenio {cv}: glosado {o.get('valor_glosado')} de {o.get('valor_cobrado')} "
                f"(esperado {v['glosado']} de {v['cobrado']}, {v['taxa_pct']}%)")
     with duckdb.connect(os.environ["QIMED_HOSPITAL_DW_FILE"], read_only=True) as c:
-        fonte = ob.fonte_de(SISTEMAS["mv"]["id"])
+        fonte = ob.fonte_de(SISTEMAS[s]["id"])
         tiss = dict(c.execute("SELECT motivo_tiss, ROUND(SUM(valor_glosado), 2) FROM dm_hosp_glosa_motivo_mes "
                               "WHERE fonte = $f GROUP BY ALL", {"f": fonte}).fetchall())
         contas = c.execute("SELECT COUNT(*), COUNT(DISTINCT conta_id) FROM fct_hosp_conta WHERE fonte = $f",
                            {"f": fonte}).fetchone()
     checar(all(abs(float(tiss.get(k, -1)) - v) <= 0.01 for k, v in esp["glosa_por_motivo_tiss"].items()),
-           f"mv glosa por motivo TISS ({tiss})")
-    checar(contas == (434, 434), f"mv: 434 contas distintas no DW, internacao e ambulatorio com ids repetidos ({contas})")
+           f"{s} glosa por motivo TISS ({tiss})")
+    if s == "mv":
+        checar(contas == (434, 434), f"mv: 434 contas distintas no DW, internacao e ambulatorio com ids repetidos ({contas})")
     return sum(c["itens"] for c in intel.get("convenios", []))
 
 
@@ -147,6 +159,12 @@ for s, e in estados().items():
         ret = next(t for t in tab if t["tabela"] == "glosas")
         checar(bool(ret.get("inferencias")) and ret["mapeamento"]["denied"] == "qimed_glosado",
                f"mv: mapeamento do dinheiro e inferencia do pago no detalhe ({ret.get('mapeamento')})")
+    elif s == "openemr":  # sem FK nenhuma: paciente pela chave unica, faturamento pelo perfil do produto
+        checar(fin == {"form_encounter": "conta", "billing": "item_conta", "ar_activity": "retorno_glosa"}
+               and papeis.get("patient_data") == "paciente", f"openemr: paciente, conta, item e glosa ({papeis})")
+        ret = next((t for t in tab if t["tabela"] == "ar_activity"), {})
+        checar(ret.get("perfil") == "OpenEMR" and len(ret.get("inferencias") or []) == 7,
+               f"openemr: perfil e as 7 regras do produto no detalhe ({ret.get('perfil')})")
     else:  # GNU Health tem fatura comercial (account_invoice): nao e conta de convenio
         checar(not fin, f"{s}: nenhum papel financeiro ({fin})")
 
@@ -168,8 +186,8 @@ for s, e in estados().items():
     if s == "gnuhealth":  # CPF no PUID: party_party e a tabela de paciente
         checar(len(linhas) == 243 and (e.get("enriquecimento") or {}).get("tabela") == "party_party",
                f"gnuhealth: 243 tabelas, party_party como paciente")
-    if s == "mv":
-        checar_glosa(e)
+    if s in ("mv", "openemr"):
+        checar_glosa(e, s)
     if s == "erp":
         checar(intel.get("taxa_ausencia_pct") == 7.08, f"erp alimenta o absenteismo com 7,08% ({intel.get('taxa_ausencia_pct')})")
 
