@@ -1,6 +1,7 @@
 """Teste de aceite da Central de Conexoes com 4 sistemas que o QIMED nunca viu, de ponta a ponta no pipeline.
 
-GNU Health (produto real, Postgres), LabVida (Postgres), ERP de RH (MariaDB) e ProntoSul (Oracle). O core e
+GNU Health (produto real, Postgres), LabVida (Postgres), ERP de RH (MariaDB) e ProntoSul (Oracle); com `mv`, o
+Hospital Sao Lucas (faturamento estilo MV, Oracle; fora do padrao: dois Oracle juntos pedem ~4,5 GB). O core e
 simulado so nos 3 endpoints que o pipeline usa (login, lista de conexoes e credenciais), por HTTP de verdade.
 O TASY entra antes pelo config/ como o HIS do hospital, base do vinculo de pacientes.
 
@@ -43,8 +44,9 @@ SISTEMAS = {
 }
 # seeds deterministicos: LabVida (gerar_labvida.esperado), ProntoSul (gerar_prontosul.py --resumo) e GNU Health
 # (mocks/gnuhealth/atribuir_cpf.py: 300 pessoas do TASY; party_party tem todas as pessoas, nao so pacientes)
-VINCULO = {"labvida": (334, 500), "prontosul": (189, 260), "gnuhealth": (300, 2048)}
-ESCOLHIDOS = sys.argv[1:] or [s for s in SISTEMAS if s != "mv"]  # mv: em construcao
+VINCULO = {"labvida": (334, 500), "prontosul": (189, 260), "gnuhealth": (300, 2048), "mv": (148, 240)}
+FINANCEIRO = {"conta", "item_conta", "retorno_glosa"}
+ESCOLHIDOS = sys.argv[1:] or [s for s in SISTEMAS if s != "mv"]
 POR_ID = {SISTEMAS[s]["id"]: SISTEMAS[s] for s in ESCOLHIDOS}
 FALHAS = []
 
@@ -93,6 +95,31 @@ def checar(cond, msg):
         FALHAS.append(msg)
 
 
+def checar_glosa(e):
+    """Gold de glosa da conexao contra o esperado da semente (a 0,01: semente em float, Gold em decimal)."""
+    import duckdb
+    sys.path.insert(0, "/opt/qimed/mocks/mv_faturamento")
+    from gerar_mv import esperado
+    esp, intel = esperado(), e.get("inteligencia") or {}
+    obtido = {c["convenio"]: c for c in intel.get("convenios", [])}
+    for cv, v in esp["glosa_por_convenio"].items():
+        o = obtido.get(str(cv), {})
+        checar(abs(o.get("valor_glosado", -1) - v["glosado"]) <= 0.01 and abs(
+               o.get("valor_cobrado", -1) - v["cobrado"]) <= 0.01,
+               f"mv convenio {cv}: glosado {o.get('valor_glosado')} de {o.get('valor_cobrado')} "
+               f"(esperado {v['glosado']} de {v['cobrado']}, {v['taxa_pct']}%)")
+    with duckdb.connect(os.environ["QIMED_HOSPITAL_DW_FILE"], read_only=True) as c:
+        fonte = ob.fonte_de(SISTEMAS["mv"]["id"])
+        tiss = dict(c.execute("SELECT motivo_tiss, ROUND(SUM(valor_glosado), 2) FROM dm_hosp_glosa_motivo_mes "
+                              "WHERE fonte = $f GROUP BY ALL", {"f": fonte}).fetchall())
+        contas = c.execute("SELECT COUNT(*), COUNT(DISTINCT conta_id) FROM fct_hosp_conta WHERE fonte = $f",
+                           {"f": fonte}).fetchone()
+    checar(all(abs(float(tiss.get(k, -1)) - v) <= 0.01 for k, v in esp["glosa_por_motivo_tiss"].items()),
+           f"mv glosa por motivo TISS ({tiss})")
+    checar(contas == (434, 434), f"mv: 434 contas distintas no DW, internacao e ambulatorio com ids repetidos ({contas})")
+    return sum(c["itens"] for c in intel.get("convenios", []))
+
+
 def estados():
     return {s: ob.ler_estado(SISTEMAS[s]["id"]) or {} for s in ESCOLHIDOS}
 
@@ -113,6 +140,15 @@ for s, e in estados().items():
     print(f"  {s}: {len(tab)} tabelas, {sum(t['situacao'] == 'carregar' for t in tab)} a carregar, "
           f"papeis {papeis}, PII {sorted(p['coluna'] for p in d.get('pii', []))}")
     checar(e.get("estado") == "aguardando_aprovacao", f"{s} aguardando aprovacao ({e.get('estado')}: {e.get('mensagem')})")
+    fin = {t: p for t, p in papeis.items() if p in FINANCEIRO}
+    if s == "mv":
+        checar(fin == {"reg_fat": "conta", "reg_amb": "conta", "itreg_fat": "item_conta", "itreg_amb": "item_conta",
+                       "glosas": "retorno_glosa"}, f"mv: conta, item e glosa reconhecidos ({fin})")
+        ret = next(t for t in tab if t["tabela"] == "glosas")
+        checar(bool(ret.get("inferencias")) and ret["mapeamento"]["denied"] == "qimed_glosado",
+               f"mv: mapeamento do dinheiro e inferencia do pago no detalhe ({ret.get('mapeamento')})")
+    else:  # GNU Health tem fatura comercial (account_invoice): nao e conta de convenio
+        checar(not fin, f"{s}: nenhum papel financeiro ({fin})")
 
 passo("aprovacao da PII (o clique do front) e rodada 2: carga completa")
 for s in ESCOLHIDOS:
@@ -132,6 +168,8 @@ for s, e in estados().items():
     if s == "gnuhealth":  # CPF no PUID: party_party e a tabela de paciente
         checar(len(linhas) == 243 and (e.get("enriquecimento") or {}).get("tabela") == "party_party",
                f"gnuhealth: 243 tabelas, party_party como paciente")
+    if s == "mv":
+        checar_glosa(e)
     if s == "erp":
         checar(intel.get("taxa_ausencia_pct") == 7.08, f"erp alimenta o absenteismo com 7,08% ({intel.get('taxa_ausencia_pct')})")
 
@@ -145,6 +183,24 @@ for s, e in estados().items():
     carga = e.get("carga") or {}
     print(f"  {s}: modo {carga.get('modo')}, linhas {sum((carga.get('linhas') or {}).values())}")
     checar(e.get("estado") == "carregado" and carga.get("modo") == "incremental", f"{s} releu em modo incremental")
+
+if "mv" in ESCOLHIDOS:
+    passo("mv: retorno de uma remessa chega depois da carga (a conta e o item nao mudam)")
+    itens_antes = checar_glosa(ob.ler_estado(SISTEMAS["mv"]["id"]))
+    with create_engine("oracle+cx_oracle://dbamv:dbamv_dono@mv-db:1521/?service_name=FREEPDB1").begin() as con:
+        rem = con.execute(text("SELECT MIN(cd_remessa) FROM remessa_fatura WHERE dt_entrega_da_fatura IS NOT NULL "
+                               "AND dt_retorno IS NULL")).scalar()
+        novos = con.execute(text(
+            "SELECT (SELECT COUNT(*) FROM itreg_fat i JOIN reg_fat a ON a.cd_reg_fat = i.cd_reg_fat "
+            "WHERE a.cd_remessa = :r) + (SELECT COUNT(*) FROM itreg_amb i JOIN reg_amb a ON a.cd_reg_amb = i.cd_reg_amb "
+            "WHERE a.cd_remessa = :r) FROM dual"), {"r": rem}).scalar()
+        con.execute(text("UPDATE remessa_fatura SET dt_retorno = SYSDATE - 1, dt_ultima_atualizacao = SYSDATE - 1 "
+                         "WHERE cd_remessa = :r"), {"r": rem})
+    print(ob.processar())
+    e = ob.ler_estado(SISTEMAS["mv"]["id"])
+    itens = sum(c["itens"] for c in (e.get("inteligencia") or {}).get("convenios", []))
+    checar(bool(rem) and novos > 0 and itens == itens_antes + novos,
+           f"mv: remessa {rem} retornada traz {novos} itens novos ao retorno ({itens_antes} -> {itens})")
 
 if "labvida" in ESCOLHIDOS:
     passo("drift: coluna nova no LabVida depois da aprovacao bloqueia a carga")

@@ -125,7 +125,7 @@ def gerar(semente: int = SEMENTE) -> Dict[str, List[Dict[str, Any]]]:
             fechada = alta + timedelta(days=r.randint(1, 8)) <= AGORA - timedelta(days=5)
             rem = remessa(conv, alta) if fechada else None
             amb = tp != "I"
-            cd_conta = (500000 if amb else 100000) + len(t["reg_amb" if amb else "reg_fat"])
+            cd_conta = 100000 + len(t["reg_amb" if amb else "reg_fat"])  # sequencias independentes: ids se repetem
             linhas = []
             for n, (cd, qt) in enumerate(itens, 1):
                 vl = _pro(cd)[3] * (1 + r.uniform(-0.05, 0.15))
@@ -157,6 +157,11 @@ def gerar(semente: int = SEMENTE) -> Dict[str, List[Dict[str, Any]]]:
                                    "sn_recursado": "S" if rec else "N",
                                    "vl_recursado": vl if rec else None,
                                    "dt_ultima_atualizacao": rem["dt_retorno"]})
+                    if m[4] is not None and not t["_dupla"]:  # um item com duas glosas (motivos diferentes)
+                        t["_dupla"].append(1)
+                        glosas.append({**glosas[-1], "cd_glosas": 40000 + len(glosas), "cd_motivo_glosa": 6,
+                                       "vl_glosa": round(li["vl_total_conta"] * 0.05, 2), "sn_recursado": "N",
+                                       "vl_recursado": None})
     for rem in remessas.values():
         rem["dt_ultima_atualizacao"] = rem["dt_retorno"] or rem["dt_entrega_da_fatura"] or datetime.combine(
             rem["dt_competencia"], datetime.min.time())
@@ -180,9 +185,14 @@ def esperado(semente: int = SEMENTE) -> Dict[str, Any]:
     tiss = {m[0]: m[2] for m in MOTIVOS}
     glosado: Dict[int, float] = defaultdict(float)
     por_motivo: Dict[str, float] = defaultdict(float)
+    por_item: Dict[tuple, Dict[int, float]] = defaultdict(lambda: defaultdict(float))
     for g in t["glosas"]:
         glosado[conv_rem[g["cd_remessa"]]] += g["vl_glosa"]
-        por_motivo[tiss[g["cd_motivo_glosa"]]] += g["vl_glosa"]
+        por_item[(g["cd_reg_fat"], g["cd_lancamento_fat"], g["cd_reg_amb"], g["cd_lancamento_amb"])][
+            g["cd_motivo_glosa"]] += g["vl_glosa"]
+    for motivos in por_item.values():  # como a Central: o item fica com o motivo de maior valor (empate: menor codigo)
+        principal = min(motivos, key=lambda m: (-motivos[m], m))
+        por_motivo[tiss[principal]] += sum(motivos.values())
     return {"pacientes": len(t["paciente"]),
             "vinculados": sum(1 for p in pacientes_tasy()[TASY_INI:TASY_FIM] if p["NR_CPF"]),
             "itens_glosados": len(t["glosas"]),

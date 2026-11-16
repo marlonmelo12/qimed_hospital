@@ -45,13 +45,23 @@ Com o ProntoSul também no ar, são dois Oracle (~4,5 GB). Numa máquina com 8 G
 
 `python mocks/mv_faturamento/gerar_mv.py --resumo` imprime as contagens e o esperado. Hoje:
 240 pacientes (148 casam com o TASY pelo CPF), 434 atendimentos, 84 contas de internação com 384 itens, 350 contas
-ambulatoriais com 914 itens, 24 remessas e 54 itens glosados. Glosa sobre o cobrado das remessas com retorno:
-Saúde Litoral 3,44%, Vida Plena 2,40%, Unimais 1,13% e Particular 0%.
+ambulatoriais com 914 itens, 24 remessas e 55 glosas (um item tem duas, de motivos diferentes). As contas de
+internação e de ambulatório têm sequências independentes, então os números se repetem entre as duas, como num HIS
+real. Glosa sobre o cobrado das remessas com retorno: Saúde Litoral 3,47%, Vida Plena 2,40%, Unimais 1,13% e
+Particular 0%.
 
 Para regerar, rode o gerador pela imagem do pipeline, que grava `sql/02_dados.sql`, e suba de novo com `down -v`.
 
 ## Estado na Central
 
-Hoje a Central reconhece só a tabela de paciente. Os itens (chave composta) ficam de fora, e conta, remessa e glosa
-entram como fora do canônico. O reconhecimento do faturamento está em construção, e este mock é o teste dele
-(`bash mocks/teste_central.sh mv`).
+A Central reconhece o faturamento (`src/ingestion/faturamento.py`):
+
+- `REG_FAT` e `REG_AMB` viram `hosp_account`, com o id prefixado pela tabela (`reg_fat:100003`);
+- `ITREG_FAT` e `ITREG_AMB` viram `hosp_charge_item`, pela chave composta;
+- `GLOSAS` vira `hosp_claim_response_item`, com uma linha por item de remessa com retorno. Duas regras ficam visíveis
+  em `inferencias` no detalhe: o item sem glosa conta como pago por inteiro, e o item com glosas de motivos diferentes
+  fica com o motivo de maior valor.
+
+`bash mocks/teste_central.sh mv gnuhealth` confere a glosa por convênio e por motivo TISS contra o esperado, as 434
+contas distintas no DW e o retorno de uma remessa que chega depois da carga. O GNU Health entra como caso negativo,
+sem nenhum papel financeiro.
