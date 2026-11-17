@@ -9,8 +9,8 @@ e coluna só seguem o estilo dele.
 ## Subir
 
 ```sh
-docker compose -f mocks/tasy/docker-compose.yml up -d     # MariaDB 11.4 em 127.0.0.1:3307, banco TASY
-docker compose -f mocks/tasy/docker-compose.yml down -v   # apaga o volume; a próxima subida recarrega o seed
+docker compose -f tasy/docker-compose.yml up -d     # MariaDB 11.4 em 127.0.0.1:3307, banco TASY
+docker compose -f tasy/docker-compose.yml down -v   # apaga o volume; a próxima subida recarrega o seed
 ```
 
 Usuário `tasy`, senha `tasy_mock` (troque por `TASY_DB_PASSWORD`). O container entra na rede `qimed-network`
@@ -31,8 +31,8 @@ A fonte está em `config/fontes_hospital.yaml` (chave `tasy`) e os campos PII em
 
 - `sql/01_schema.sql`: tabelas e chaves (primárias e estrangeiras), num SQL que roda em MariaDB e em SQLite (os testes carregam
   o mock em SQLite).
-- `sql/02_dados.sql.gz`: seed gerado por `scripts/gerar_mock_tasy.py` (determinístico, semente 20261111).
-  Para regerar: `python scripts/gerar_mock_tasy.py` no container do pipeline e `down -v` / `up -d`.
+- `sql/02_dados.sql.gz`: seed gerado por `gerar_mock_tasy.py` (determinístico, semente 20261111).
+  Para regerar: `python tasy/gerar_mock_tasy.py` (na raiz deste repo, Python 3.11 sem dependências) e `down -v` / `up -d`.
 
 ## O hospital
 

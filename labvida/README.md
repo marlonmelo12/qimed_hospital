@@ -17,8 +17,8 @@ O banco é de propósito diferente do TASY:
 ## Subir
 
 ```sh
-docker compose -f mocks/labvida/docker-compose.yml up -d     # Postgres 16 em 127.0.0.1:5436, banco labvida
-docker compose -f mocks/labvida/docker-compose.yml down -v   # apaga o volume; a próxima subida recarrega o seed
+docker compose -f labvida/docker-compose.yml up -d     # Postgres 16 em 127.0.0.1:5436, banco labvida
+docker compose -f labvida/docker-compose.yml down -v   # apaga o volume; a próxima subida recarrega o seed
 ```
 
 Usuário `labvida`, senha `labvida_mock` (troque por `LABVIDA_DB_PASSWORD`).

@@ -1,7 +1,7 @@
 # Hospital Sao Lucas (ficticio): HIS no estilo MV Soul em Oracle 23ai Free, faturamento de convenio. Entra pela Central.
 # Dados gerados por mocks/mv_faturamento/gerar_mv.py. Detalhes em mocks/mv_faturamento/README.md.
 #
-#   docker compose -f mocks/mv_faturamento/docker-compose.yml up -d     # ~1,5 GB de RAM; 1a subida leva ~1 min
+#   docker compose -f mv_faturamento/docker-compose.yml up -d     # ~1,5 GB de RAM; 1a subida leva ~1 min
 #
 # O seed roda so na primeira subida (volume vazio). Para recarregar: down -v e up de novo.
 

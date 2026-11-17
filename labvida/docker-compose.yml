@@ -1,7 +1,7 @@
 # LabVida (ficticio): sistema de laboratorio em Postgres que o QIMED nunca viu. Entra pela Central de Conexoes.
 # Dados gerados por mocks/labvida/gerar_labvida.py. Detalhes em mocks/labvida/README.md.
 #
-#   docker compose -f mocks/labvida/docker-compose.yml up -d
+#   docker compose -f labvida/docker-compose.yml up -d
 #
 # O seed roda so na primeira subida (volume vazio). Para recarregar: down -v e up de novo.
 

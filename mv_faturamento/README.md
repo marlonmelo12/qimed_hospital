@@ -25,8 +25,8 @@ As descrições dos motivos são do hospital.
 ## Subir
 
 ```sh
-docker compose -f mocks/mv_faturamento/docker-compose.yml up -d --wait   # 127.0.0.1:1523, ~2,2 GB de RAM
-docker compose -f mocks/mv_faturamento/docker-compose.yml down -v        # a próxima subida recarrega o seed
+docker compose -f mv_faturamento/docker-compose.yml up -d --wait   # 127.0.0.1:1523, ~2,2 GB de RAM
+docker compose -f mv_faturamento/docker-compose.yml down -v        # a próxima subida recarrega o seed
 ```
 
 Com o ProntoSul também no ar, são dois Oracle (~4,5 GB). Numa máquina com 8 GB para o Docker, pare um deles.
@@ -62,6 +62,6 @@ A Central reconhece o faturamento (`src/ingestion/faturamento.py`):
   em `inferencias` no detalhe: o item sem glosa conta como pago por inteiro, e o item com glosas de motivos diferentes
   fica com o motivo de maior valor.
 
-`bash mocks/teste_central.sh mv gnuhealth` confere a glosa por convênio e por motivo TISS contra o esperado, as 434
+`bash scripts/teste_central.sh mv gnuhealth` confere a glosa por convênio e por motivo TISS contra o esperado, as 434
 contas distintas no DW e o retorno de uma remessa que chega depois da carga. O GNU Health entra como caso negativo,
 sem nenhum papel financeiro.

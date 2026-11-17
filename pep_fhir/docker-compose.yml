@@ -1,7 +1,7 @@
 # Mock de prontuario eletronico (PEP) com API FHIR R4: servidor HAPI FHIR com o segundo hospital simulado da rede.
 # Dados ficticios gerados e carregados por mocks/pep_fhir/gerar_pep.py. Detalhes em mocks/pep_fhir/README.md.
 #
-#   docker compose -f mocks/pep_fhir/docker-compose.yml up -d
+#   docker compose -f pep_fhir/docker-compose.yml up -d
 #   (no container do pipeline) python mocks/pep_fhir/gerar_pep.py --carregar http://pep-fhir:8080/fhir
 #
 # shortcut: banco H2 dentro do container (a imagem roda sem root e nao grava em volume novo); recriar o container

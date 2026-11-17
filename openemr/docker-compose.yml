@@ -1,6 +1,6 @@
 # Mock Clinica Vale Sul: banco de um OpenEMR 8.5.0 real, gerado pela fabrica (fabrica/fabricar.sh). So o banco sobe.
-#   docker compose -f mocks/openemr/docker-compose.yml up -d --wait   # 127.0.0.1:3310
-#   docker compose -f mocks/openemr/docker-compose.yml down -v        # a proxima subida recarrega o dump
+#   docker compose -f openemr/docker-compose.yml up -d --wait   # 127.0.0.1:3310
+#   docker compose -f openemr/docker-compose.yml down -v        # a proxima subida recarrega o dump
 services:
   openemr-db:
     image: mariadb:11.4

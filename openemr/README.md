@@ -20,8 +20,8 @@ Os códigos TISS de glosa são os reais (tabela 38).
 ## Subir
 
 ```sh
-docker compose -f mocks/openemr/docker-compose.yml up -d --wait   # 127.0.0.1:3310, ~300 MB de RAM
-docker compose -f mocks/openemr/docker-compose.yml down -v        # a próxima subida recarrega o dump
+docker compose -f openemr/docker-compose.yml up -d --wait   # 127.0.0.1:3310, ~300 MB de RAM
+docker compose -f openemr/docker-compose.yml down -v        # a próxima subida recarrega o dump
 ```
 
 ## Cadastro na Central de Conexões
@@ -59,8 +59,8 @@ os reproduz e serve de especificação.
 ## Regerar (a fábrica)
 
 ```sh
-bash mocks/openemr/fabrica/fabricar.sh              # ~4 min e ~1,5 GB de RAM enquanto roda
-bash mocks/openemr/fabrica/fabricar.sh --pacientes 5  # recorte pequeno, para depurar
+bash openemr/fabrica/fabricar.sh              # ~4 min e ~1,5 GB de RAM enquanto roda
+bash openemr/fabrica/fabricar.sh --pacientes 5  # recorte pequeno, para depurar
 ```
 
 A fábrica funciona assim:
@@ -76,7 +76,7 @@ Dois passos não passam pelo produto, e o motivo está no cabeçalho do `popular
 
 ## Estado na Central
 
-`bash mocks/teste_central.sh openemr` termina com 0 falha:
+`bash scripts/teste_central.sh openemr` termina com 0 falha:
 - **Paciente:** `patient_data` é reconhecida pela chave única `pid`, e as FKs de paciente, consulta, convênio e
   pagamento são inferidas por nome e por valor.
 - **Vínculo:** 151 de 220 pacientes casam com o TASY.

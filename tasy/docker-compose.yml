@@ -1,7 +1,7 @@
 # Mock de um HIS estilo TASY (assistencial + faturamento) em MariaDB, para testar a ingestao hospitalar sem hospital real.
 # Dados ficticios gerados por scripts/gerar_mock_tasy.py. Detalhes em mocks/tasy/README.md.
 #
-#   docker compose -f mocks/tasy/docker-compose.yml up -d
+#   docker compose -f tasy/docker-compose.yml up -d
 #
 # O seed roda so na primeira subida (volume vazio). Para recarregar: down -v e up de novo.
 

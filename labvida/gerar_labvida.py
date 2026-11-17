@@ -20,11 +20,11 @@ from functools import lru_cache
 from typing import Any, Dict, List
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(AQUI)), "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(AQUI), "tasy"))
 from gerar_mock_tasy import Gerador, sql_valor  # noqa: E402
 
 SEMENTE = 20261113
-SEMENTE_TASY = 20261111  # a do seed versionado em mocks/tasy/sql/02_dados.sql.gz
+SEMENTE_TASY = 20261111  # a do seed versionado em tasy/sql/02_dados.sql.gz
 PACIENTES_TASY, PROPRIOS = 350, 150
 SEXO = {"M": "Masculino", "F": "Feminino", "I": "Ignorado"}
 INICIO, FIM = datetime(2026, 5, 1), datetime(2026, 11, 10, 18, 0)

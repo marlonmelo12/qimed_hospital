@@ -1,7 +1,7 @@
 # GNU Health HIS 5.0 (produto real, Tryton 7.0): o banco que o trytond criou, restaurado do dump do repo GNU_helth.
 # Entra pela Central de Conexoes como Postgres. Sem o servidor Tryton: a Central so le SQL.
 #
-#   docker compose -f mocks/gnuhealth/docker-compose.yml up -d
+#   docker compose -f gnuhealth/docker-compose.yml up -d
 #
 # O restore roda so na primeira subida (volume vazio). Para recarregar: down -v e up de novo.
 

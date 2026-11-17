@@ -15,8 +15,8 @@ O que ele testa, e que os mocks feitos à mão não pegavam:
 ## Subir
 
 ```sh
-docker compose -f mocks/gnuhealth/docker-compose.yml up -d --wait   # 127.0.0.1:5437, banco gnuhealth
-docker compose -f mocks/gnuhealth/docker-compose.yml down -v        # a próxima subida restaura de novo
+docker compose -f gnuhealth/docker-compose.yml up -d --wait   # 127.0.0.1:5437, banco gnuhealth
+docker compose -f gnuhealth/docker-compose.yml down -v        # a próxima subida restaura de novo
 ```
 
 ## Cadastro na Central de Conexões
@@ -52,4 +52,4 @@ pessoas e entidades (pacientes, profissionais, instituições), e a Central não
 
 ## Teste de aceite
 
-`bash mocks/teste_central.sh` roda os 4 sistemas da Central (este, LabVida, ERP de RH e ProntoSul).
+`bash scripts/teste_central.sh` roda os 4 sistemas da Central (este, LabVida, ERP de RH e ProntoSul).

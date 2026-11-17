@@ -16,8 +16,8 @@ Além disso, ele tem nomes no estilo Oracle, o tipo `DATE`, CPF sem máscara e s
 ## Subir
 
 ```sh
-docker compose -f mocks/prontosul/docker-compose.yml up -d     # 127.0.0.1:1522, ~1,5 GB de RAM
-docker compose -f mocks/prontosul/docker-compose.yml down -v   # apaga o volume; a próxima subida recarrega o seed
+docker compose -f prontosul/docker-compose.yml up -d     # 127.0.0.1:1522, ~1,5 GB de RAM
+docker compose -f prontosul/docker-compose.yml down -v   # apaga o volume; a próxima subida recarrega o seed
 ```
 
 ## Cadastro na Central de Conexões (demo)
@@ -39,5 +39,5 @@ Rode o gerador pela imagem do pipeline, porque não há Python no host. Ele grav
 
 ## Movimento contínuo
 
-`mocks/simular_movimento.py` escreve nos três mocks (LabVida, ERP de RH e ProntoSul) a cada 20 s. O cabeçalho do
+`simular_movimento.py` escreve nos três mocks (LabVida, ERP de RH e ProntoSul) a cada 20 s. O cabeçalho do
 script tem o comando.

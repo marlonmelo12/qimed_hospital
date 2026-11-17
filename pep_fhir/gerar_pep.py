@@ -19,11 +19,11 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Any, Dict, List
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tasy"))
 from gerar_mock_tasy import Gerador  # noqa: E402
 
 SEMENTE = 20261112
-SEMENTE_TASY = 20261111  # a do seed versionado em mocks/tasy/sql/02_dados.sql.gz
+SEMENTE_TASY = 20261111  # a do seed versionado em tasy/sql/02_dados.sql.gz
 CPF_SYSTEM = "urn:oid:2.16.840.1.113883.13.237"
 SEXO = {"M": "male", "F": "female", "I": "unknown"}
 INICIO, FIM = datetime(2026, 5, 1), datetime(2026, 11, 10, 18, 0)

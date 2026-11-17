@@ -16,8 +16,8 @@ O que este banco testa:
 ## Subir
 
 ```sh
-docker compose -f mocks/erp_rh/docker-compose.yml up -d     # MariaDB 11.4 em 127.0.0.1:3308, banco erp_rh
-docker compose -f mocks/erp_rh/docker-compose.yml down -v   # apaga o volume; a próxima subida recarrega o seed
+docker compose -f erp_rh/docker-compose.yml up -d     # MariaDB 11.4 em 127.0.0.1:3308, banco erp_rh
+docker compose -f erp_rh/docker-compose.yml down -v   # apaga o volume; a próxima subida recarrega o seed
 ```
 
 Usuário `erp`, senha `erp_mock` (troque por `ERP_RH_DB_PASSWORD`).

@@ -1,7 +1,7 @@
 # ProntoSul (ficticio): pronto-atendimento em Oracle 23ai Free que o QIMED nunca viu. Entra pela Central de Conexoes.
 # Dados gerados por mocks/prontosul/gerar_prontosul.py. Detalhes em mocks/prontosul/README.md.
 #
-#   docker compose -f mocks/prontosul/docker-compose.yml up -d     # ~1,5 GB de RAM; 1a subida leva ~1 min
+#   docker compose -f prontosul/docker-compose.yml up -d     # ~1,5 GB de RAM; 1a subida leva ~1 min
 #
 # O seed roda so na primeira subida (volume vazio). Para recarregar: down -v e up de novo.
 

@@ -1,7 +1,7 @@
 # ERP de RH e ponto (ficticio) em MariaDB que o QIMED nunca viu. Entra pela Central de Conexoes.
 # Dados gerados por mocks/erp_rh/gerar_erp_rh.py. Detalhes em mocks/erp_rh/README.md.
 #
-#   docker compose -f mocks/erp_rh/docker-compose.yml up -d
+#   docker compose -f erp_rh/docker-compose.yml up -d
 #
 # O seed roda so na primeira subida (volume vazio). Para recarregar: down -v e up de novo.
 

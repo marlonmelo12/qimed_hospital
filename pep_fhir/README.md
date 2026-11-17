@@ -7,7 +7,7 @@ hospital. **Tudo é fictício**: nomes, CPFs (só com dígito verificador válid
 ## Subir e carregar
 
 ```sh
-docker compose -f mocks/pep_fhir/docker-compose.yml up -d   # 127.0.0.1:8091/fhir; na rede qimed-network, pep-fhir:8080
+docker compose -f pep_fhir/docker-compose.yml up -d   # 127.0.0.1:8091/fhir; na rede qimed-network, pep-fhir:8080
 # espere /fhir/metadata responder (cerca de 1 min) e carregue, no container do pipeline:
 python mocks/pep_fhir/gerar_pep.py --carregar http://pep-fhir:8080/fhir
 ```
@@ -19,8 +19,8 @@ O banco H2 fica dentro do container. Depois de `stop`/`start`, os dados continua
 PEP do hospital do TASY, recrie o container, carregue de novo e ingira do zero:
 
 ```sh
-docker compose -f mocks/pep_fhir/docker-compose.yml down
-docker compose -f mocks/pep_fhir/docker-compose.yml up -d
+docker compose -f pep_fhir/docker-compose.yml down
+docker compose -f pep_fhir/docker-compose.yml up -d
 python mocks/pep_fhir/gerar_pep.py --carregar http://pep-fhir:8080/fhir   # no container do pipeline
 python -m src.pipeline.run_fonte_hospital pep_fhir --completo
 ```

@@ -21,7 +21,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(AQUI)), "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(AQUI), "tasy"))
 from gerar_mock_tasy import Gerador, sql_valor  # noqa: E402
 
 SEMENTE = 20261114
