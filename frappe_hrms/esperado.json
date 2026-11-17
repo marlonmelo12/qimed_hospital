@@ -1,0 +1,13 @@
+{
+ "plantoes": 22740,
+ "realizados": 21900,
+ "futuros": 840,
+ "ausencias": 1551,
+ "taxa_ausencia_pct": 7.08,
+ "funcionarios": 120,
+ "departamentos": 5,
+ "periodo": [
+  "2025-11-11",
+  "2026-11-10"
+ ]
+}

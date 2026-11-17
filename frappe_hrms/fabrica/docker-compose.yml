@@ -1,0 +1,33 @@
+# Fabrica do mock Frappe HRMS: a aplicacao inteira (Frappe 15 + ERPNext 15 + HRMS 15, imagem oficial do HRMS) roda
+# uma vez, o popular.py grava a escala pelo ORM do proprio Frappe e o fabricar.sh tira o dump para frappe_hrms/sql.
+# O teste so sobe o banco. Base: pwd.yml do frappe_docker, sem frontend, workers nem scheduler (a fabrica nao usa).
+#   bash frappe_hrms/fabrica/fabricar.sh
+services:
+  frappe-fab-db:
+    image: mariadb:10.6
+    container_name: qimed-frappe-fab-db
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci",
+              "--skip-character-set-client-handshake"]
+    environment:
+      MARIADB_ROOT_PASSWORD: root_fabrica
+      TZ: America/Sao_Paulo
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      retries: 60
+  frappe-fab-redis-cache:
+    image: redis:6.2-alpine
+    container_name: qimed-frappe-fab-redis-cache
+  frappe-fab-redis-queue:
+    image: redis:6.2-alpine
+    container_name: qimed-frappe-fab-redis-queue
+  frappe-fab:
+    image: ghcr.io/frappe/hrms:v16.54.1  # a tag e da imagem; dentro vem frappe 15.127, erpnext 15.125 e hrms 15.64.9
+    container_name: qimed-frappe-fab
+    depends_on:
+      frappe-fab-db: {condition: service_healthy}
+    entrypoint: ["sleep", "infinity"]
+    environment:
+      TZ: America/Sao_Paulo
+    volumes:
+      - ../..:/mocks  # o roteiro vem do erp_rh/gerar_erp_rh.py; o esperado.json volta para frappe_hrms/
