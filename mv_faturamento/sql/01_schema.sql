@@ -1,11 +1,13 @@
 -- Hospital Sao Lucas (ficticio), segundo hospital da rede, com HIS no ESTILO do MV Soul em Oracle. Nao e o modelo de
 -- dados real do MV (que nao e publico): segue o estilo (schema DBAMV, nomes curtos em maiusculas, SN_ para sim/nao,
 -- conta de internacao separada da ambulatorial, item da conta com chave composta, glosa so do que foi glosado).
--- Dados em 02_dados.sql (mocks/mv_faturamento/gerar_mv.py). O QIMED recebe QIMED_LEITURA, so com SELECT.
-ALTER SESSION SET CONTAINER = FREEPDB1;
+-- Dados em 02_dados.sql e ruido em 03_ruido.sql (gerar_mv.py). Oracle 11g R2, como em muito hospital.
+-- Acesso como em producao: o QIMED_LEITURA nao tem tabela propria nem CURRENT_SCHEMA trocado; le por sinonimos
+-- privados para o DBAMV, e o paciente por uma view (sem PK nem FK no catalogo). Parte das FKs nao e declarada
+-- (atendime -> paciente, reg_amb -> atendime, glosas -> mot_glosa), como em schema que cresceu sem elas.
 
-CREATE USER dbamv IDENTIFIED BY dbamv_dono QUOTA UNLIMITED ON users;
-GRANT CREATE SESSION, CREATE TABLE TO dbamv;
+CREATE USER dbamv IDENTIFIED BY dbamv_dono DEFAULT TABLESPACE users QUOTA UNLIMITED ON users;
+GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW TO dbamv;
 CREATE USER qimed_leitura IDENTIFIED BY leitura_mock;
 GRANT CREATE SESSION TO qimed_leitura;
 
@@ -14,7 +16,7 @@ ALTER SESSION SET CURRENT_SCHEMA = dbamv;
 CREATE TABLE paciente (
     cd_paciente           NUMBER(10)    PRIMARY KEY,
     nm_paciente           VARCHAR2(120) NOT NULL,
-    nr_cpf                VARCHAR2(11),
+    nr_cpf                VARCHAR2(14),          -- cadastro antigo guarda com mascara
     dt_nascimento         DATE,
     tp_sexo               CHAR(1),
     nm_mae                VARCHAR2(120),
@@ -33,7 +35,7 @@ CREATE TABLE convenio (
 -- TP_ATENDIMENTO: I internacao, A ambulatorio, U urgencia, E externo
 CREATE TABLE atendime (
     cd_atendimento        NUMBER(10)  PRIMARY KEY,
-    cd_paciente           NUMBER(10)  NOT NULL REFERENCES paciente (cd_paciente),
+    cd_paciente           NUMBER(10)  NOT NULL,
     cd_convenio           NUMBER(4)   NOT NULL REFERENCES convenio (cd_convenio),
     tp_atendimento        CHAR(1)     NOT NULL,
     dt_atendimento        DATE        NOT NULL,
@@ -90,7 +92,7 @@ CREATE TABLE itreg_fat (
 -- Conta ambulatorial (ambulatorio, urgencia, externo)
 CREATE TABLE reg_amb (
     cd_reg_amb            NUMBER(10)   PRIMARY KEY,
-    cd_atendimento        NUMBER(10)   NOT NULL REFERENCES atendime (cd_atendimento),
+    cd_atendimento        NUMBER(10)   NOT NULL,
     cd_convenio           NUMBER(4)    NOT NULL REFERENCES convenio (cd_convenio),
     cd_remessa            NUMBER(8)    REFERENCES remessa_fatura (cd_remessa),
     dt_lancamento         DATE         NOT NULL,
@@ -127,7 +129,7 @@ CREATE TABLE glosas (
     cd_lancamento_fat     NUMBER(5),
     cd_reg_amb            NUMBER(10),
     cd_lancamento_amb     NUMBER(5),
-    cd_motivo_glosa       NUMBER(4)    NOT NULL REFERENCES mot_glosa (cd_motivo_glosa),
+    cd_motivo_glosa       NUMBER(4)    NOT NULL,
     vl_glosa              NUMBER(14,2) NOT NULL,
     dt_glosa              DATE         NOT NULL,
     sn_recursado          CHAR(1)      NOT NULL,
@@ -137,20 +139,28 @@ CREATE TABLE glosas (
     CONSTRAINT fk_glosas_itreg_amb FOREIGN KEY (cd_reg_amb, cd_lancamento_amb) REFERENCES itreg_amb (cd_reg_amb, cd_lancamento)
 );
 
-GRANT SELECT ON paciente TO qimed_leitura;
+-- Paciente pela view do DBA (sem o nome da mae); o resto por sinonimo para a tabela
+CREATE VIEW vw_paciente AS SELECT cd_paciente, nm_paciente, nr_cpf, dt_nascimento, tp_sexo, dt_cadastro,
+    dt_ultima_atualizacao FROM paciente;
+GRANT SELECT ON vw_paciente TO qimed_leitura;
+CREATE SYNONYM qimed_leitura.paciente FOR dbamv.vw_paciente;
 GRANT SELECT ON convenio TO qimed_leitura;
+CREATE SYNONYM qimed_leitura.convenio FOR dbamv.convenio;
 GRANT SELECT ON atendime TO qimed_leitura;
+CREATE SYNONYM qimed_leitura.atendime FOR dbamv.atendime;
 GRANT SELECT ON pro_fat TO qimed_leitura;
+CREATE SYNONYM qimed_leitura.pro_fat FOR dbamv.pro_fat;
 GRANT SELECT ON remessa_fatura TO qimed_leitura;
+CREATE SYNONYM qimed_leitura.remessa_fatura FOR dbamv.remessa_fatura;
 GRANT SELECT ON reg_fat TO qimed_leitura;
+CREATE SYNONYM qimed_leitura.reg_fat FOR dbamv.reg_fat;
 GRANT SELECT ON itreg_fat TO qimed_leitura;
+CREATE SYNONYM qimed_leitura.itreg_fat FOR dbamv.itreg_fat;
 GRANT SELECT ON reg_amb TO qimed_leitura;
+CREATE SYNONYM qimed_leitura.reg_amb FOR dbamv.reg_amb;
 GRANT SELECT ON itreg_amb TO qimed_leitura;
+CREATE SYNONYM qimed_leitura.itreg_amb FOR dbamv.itreg_amb;
 GRANT SELECT ON mot_glosa TO qimed_leitura;
+CREATE SYNONYM qimed_leitura.mot_glosa FOR dbamv.mot_glosa;
 GRANT SELECT ON glosas TO qimed_leitura;
-
-CREATE OR REPLACE TRIGGER dbamv.trg_qimed_leitura_schema AFTER LOGON ON qimed_leitura.SCHEMA
-BEGIN
-    EXECUTE IMMEDIATE 'ALTER SESSION SET CURRENT_SCHEMA = DBAMV';
-END;
-/
+CREATE SYNONYM qimed_leitura.glosas FOR dbamv.glosas;

@@ -7,13 +7,20 @@ um manual publico de prestador (ver README).
 Pacientes: TASY_INI..TASY_FIM do seed do TASY (a rede atende a mesma pessoa nos dois hospitais) mais PROPRIOS.
 Glosa: so nas remessas com retorno; a taxa certa e glosado / cobrado das remessas com retorno (esperado()).
 
-  python mocks/mv_faturamento/gerar_mv.py            # grava mocks/mv_faturamento/sql/02_dados.sql
-  python mocks/mv_faturamento/gerar_mv.py --resumo
+Dados de producao (sujar()): CPF com mascara e com digito errado, paciente cadastrado duas vezes, nascimento
+sentinela 1900-01-01, nome em maiusculas sem acento, conta reaberta depois do retorno e glosa estornada no recurso
+(linha negativa). Ruido (ruido()): ~300 tabelas de parametro, log e temporarias, a maioria vazia, como no schema de
+um HIS em producao.
+
+  python mv_faturamento/gerar_mv.py            # grava sql/02_dados.sql e sql/03_ruido.sql
+  python mv_faturamento/gerar_mv.py --resumo
 """
 import argparse
 import os
 import random
+import re
 import sys
+import unicodedata
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List
@@ -168,12 +175,84 @@ def gerar(semente: int = SEMENTE) -> Dict[str, List[Dict[str, Any]]]:
     t["remessa_fatura"] = sorted(remessas.values(), key=lambda x: x["cd_remessa"])
     ordem = ["paciente", "convenio", "atendime", "pro_fat", "remessa_fatura", "reg_fat", "itreg_fat", "reg_amb",
              "itreg_amb", "mot_glosa", "glosas"]
-    return {k: t[k] for k in ordem}
+    return sujar({k: t[k] for k in ordem}, semente)
+
+
+def _sem_acento(s):
+    return s and unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+
+
+def sujar(t: Dict[str, List[Dict[str, Any]]], semente: int) -> Dict[str, List[Dict[str, Any]]]:
+    """Os defeitos de um banco de producao, com RNG proprio: o dado limpo de gerar() nao muda."""
+    r = random.Random(semente + 1)
+    for p in t["paciente"]:
+        p["nm_paciente"], p["nm_mae"] = _sem_acento(p["nm_paciente"]), _sem_acento(p["nm_mae"])
+        x = r.random()
+        if x < 0.15:  # cadastro antigo, digitado com mascara
+            p["nr_cpf"] = f"{p['nr_cpf'][:3]}.{p['nr_cpf'][3:6]}.{p['nr_cpf'][6:9]}-{p['nr_cpf'][9:]}"
+        elif x < 0.18:  # erro de digitacao: o digito verificador nao fecha
+            p["nr_cpf"] = p["nr_cpf"][:10] + str((int(p["nr_cpf"][10]) + 1) % 10)
+        if r.random() < 0.02:
+            p["dt_nascimento"] = date(1900, 1, 1)  # "nao informado" de sistema legado
+    for p in r.sample(t["paciente"], 6):  # a mesma pessoa cadastrada de novo na recepcao, sem atendimento
+        t["paciente"].append({**p, "cd_paciente": 300000 + len(t["paciente"]), "nm_paciente": p["nm_paciente"] + " ",
+                              "dt_cadastro": p["dt_cadastro"] + timedelta(days=200),
+                              "dt_ultima_atualizacao": p["dt_cadastro"] + timedelta(days=200)})
+    retornadas = {x["cd_remessa"]: x["dt_retorno"] for x in t["remessa_fatura"] if x["dt_retorno"]}
+    for conta in r.sample([c for c in t["reg_fat"] + t["reg_amb"] if c["cd_remessa"] in retornadas], 8):
+        conta["sn_fechada"] = "N"  # reaberta para refaturar o glosado; segue na remessa original
+        conta["dt_ultima_atualizacao"] = retornadas[conta["cd_remessa"]] + timedelta(days=3)
+    for g in r.sample([g for g in t["glosas"] if g["sn_recursado"] == "S"], 4):  # recurso aceito: estorno
+        t["glosas"].append({**g, "cd_glosas": 40000 + len(t["glosas"]), "vl_glosa": -g["vl_glosa"],
+                            "dt_glosa": g["dt_glosa"] + timedelta(days=20), "vl_recursado": None,
+                            "dt_ultima_atualizacao": g["dt_glosa"] + timedelta(days=20)})
+    return t
+
+
+# Ruido: o schema de um HIS em producao tem centenas de tabelas que nao sao do faturamento
+MODULOS = ["FAT", "ATE", "INT", "PSS", "EST", "FIN", "CTB", "SUP", "LAB", "IMG", "NUT", "FAR", "SAM", "CME", "AGE"]
+TIPOS = ["PAR", "LOG", "TMP", "CFG", "AUD", "HIST", "AUX"]
+COISAS = ["CONFIG", "IMPRESSAO", "INTEGRACAO", "USUARIO", "ACESSO", "FILA", "MENSAGEM", "LOTE", "REGRA",
+          "TABELA", "CAMPO", "ERRO", "ROTINA", "JOB", "EXPORTACAO", "IMPORTACAO", "TELA", "PERFIL", "SETOR", "TURNO"]
+
+
+def ruido(semente: int = SEMENTE, n: int = 300):
+    """[(tabela, ddl, linhas)]: parametro, log, auditoria e temporaria, ~70% vazias. Duas imitam o schema real com
+    colunas que confundem (preco por convenio, log de acesso ao paciente): o reconhecedor nao pode tomar nenhuma
+    por conta, item ou paciente."""
+    r = random.Random(semente + 2)
+    nomes = r.sample(sorted({f"{tp}_{m}_{c}" for tp in TIPOS for m in MODULOS for c in COISAS}), n - 2)
+    out = [("tab_preco_convenio",
+            "CREATE TABLE tab_preco_convenio (cd_convenio NUMBER(4) NOT NULL, cd_pro_fat VARCHAR2(8) NOT NULL, "
+            "vl_preco NUMBER(12,2) NOT NULL, dt_vigencia DATE NOT NULL, "
+            "CONSTRAINT pk_tab_preco_convenio PRIMARY KEY (cd_convenio, cd_pro_fat, dt_vigencia))",
+            [{"cd_convenio": c[0], "cd_pro_fat": p[0], "vl_preco": round(p[3] * r.uniform(0.9, 1.3), 2),
+              "dt_vigencia": date(2026, 1, 1)} for c in CONVENIOS[:3] for p in PRO_FAT]),
+           ("log_acesso_paciente",
+            "CREATE TABLE log_acesso_paciente (cd_log NUMBER(10) PRIMARY KEY, cd_paciente NUMBER(10), "
+            "nm_usuario VARCHAR2(30) NOT NULL, ds_tela VARCHAR2(40), dt_acesso DATE NOT NULL)",
+            [{"cd_log": i, "cd_paciente": 300000 + r.randint(0, 239), "nm_usuario": f"USU{r.randint(1, 40):03d}",
+              "ds_tela": r.choice(["M_PACIENTE", "M_ATENDIME", "M_CONTA"]),
+              "dt_acesso": INICIO + timedelta(minutes=r.randint(0, 200000))} for i in range(1, 501)])]
+    for nome in (x.lower() for x in nomes):
+        chave = "cd_" + nome.split("_", 1)[1][:27]
+        cols = [(chave, "NUMBER(10)")] + ([("cd_convenio", "NUMBER(4)")] if r.random() < 0.15 else []) + [
+            ("ds_valor", "VARCHAR2(200)"), ("sn_ativo", "CHAR(1)"), ("nm_usuario", "VARCHAR2(30)"),
+            ("dt_atualizacao", "DATE")]
+        ddl = (f"CREATE TABLE {nome} (" + ", ".join(f"{c} {tp}" for c, tp in cols)
+               + f", CONSTRAINT pk_{nome[:27]} PRIMARY KEY ({chave}))")
+        linhas = [] if r.random() >= 0.3 else [
+            {chave: i, **({"cd_convenio": r.choice(CONVENIOS)[0]} if cols[1][0] == "cd_convenio" else {}),
+             "ds_valor": f"VALOR {i}", "sn_ativo": r.choice("SN"), "nm_usuario": f"USU{r.randint(1, 40):03d}",
+             "dt_atualizacao": INICIO + timedelta(days=r.randint(0, 190))} for i in range(1, r.randint(3, 60))]
+        out.append((nome, ddl, linhas))
+    return out
 
 
 def esperado(semente: int = SEMENTE) -> Dict[str, Any]:
     """Vinculo de pacientes e glosa por convenio e por motivo TISS, so das remessas com retorno."""
     t = gerar(semente)
+    cpfs = {p["NR_CPF"] for p in pacientes_tasy() if p["NR_CPF"]}
     retornadas = {x["cd_remessa"] for x in t["remessa_fatura"] if x["dt_retorno"]}
     cobrado: Dict[int, float] = defaultdict(float)
     for conta_t, item_t, k in (("reg_fat", "itreg_fat", "cd_reg_fat"), ("reg_amb", "itreg_amb", "cd_reg_amb")):
@@ -194,7 +273,8 @@ def esperado(semente: int = SEMENTE) -> Dict[str, Any]:
         principal = min(motivos, key=lambda m: (-motivos[m], m))
         por_motivo[tiss[principal]] += sum(motivos.values())
     return {"pacientes": len(t["paciente"]),
-            "vinculados": sum(1 for p in pacientes_tasy()[TASY_INI:TASY_FIM] if p["NR_CPF"]),
+            # como a Central: so os digitos do CPF; digito errado nao casa, cadastro duplicado conta duas vezes
+            "vinculados": sum(1 for p in t["paciente"] if p["nr_cpf"] and re.sub(r"\D", "", p["nr_cpf"]) in cpfs),
             "itens_glosados": len(t["glosas"]),
             "glosa_por_convenio": {c: {"cobrado": round(cobrado[c], 2), "glosado": round(glosado[c], 2),
                                        "taxa_pct": round(100 * glosado[c] / cobrado[c], 2) if cobrado[c] else None}
@@ -202,30 +282,50 @@ def esperado(semente: int = SEMENTE) -> Dict[str, Any]:
             "glosa_por_motivo_tiss": {k: round(v, 2) for k, v in sorted(por_motivo.items())}}
 
 
+def _inserts(f, tabela: str, linhas: List[Dict[str, Any]]):
+    """INSERT ALL de 200 linhas: o 11g nao aceita VALUES com varias linhas."""
+    colunas = list(linhas[0])
+    f.write(f"\n-- {tabela}: {len(linhas)} linhas\n")
+    for i in range(0, len(linhas), 200):
+        f.write("INSERT ALL\n" + "\n".join(
+            f"  INTO {tabela} ({', '.join(colunas)}) VALUES (" + ", ".join(valor_oracle(l[c]) for c in colunas) + ")"
+            for l in linhas[i:i + 200]) + "\nSELECT 1 FROM dual;\n")
+
+
 def escrever(tabelas, caminho: str):
     with open(caminho, "w", encoding="utf-8", newline="\n") as f:
-        f.write(f"-- Gerado por mocks/mv_faturamento/gerar_mv.py (semente {SEMENTE}). Nao edite a mao.\n"
-                "ALTER SESSION SET CONTAINER = FREEPDB1;\nALTER SESSION SET CURRENT_SCHEMA = dbamv;\n")
+        f.write(f"-- Gerado por mv_faturamento/gerar_mv.py (semente {SEMENTE}). Nao edite a mao.\n"
+                "ALTER SESSION SET CURRENT_SCHEMA = dbamv;\n")
         for tabela, linhas in tabelas.items():
-            colunas = list(linhas[0])
-            f.write(f"\n-- {tabela}: {len(linhas)} linhas\n")
-            for i in range(0, len(linhas), 200):
-                valores = ",\n".join("(" + ", ".join(valor_oracle(l[c]) for c in colunas) + ")"
-                                     for l in linhas[i:i + 200])
-                f.write(f"INSERT INTO {tabela} ({', '.join(colunas)}) VALUES\n{valores};\n")
+            _inserts(f, tabela, linhas)
+        f.write("COMMIT;\n")
+
+
+def escrever_ruido(tabelas, caminho: str):
+    """DDL, dados, GRANT e sinonimo do QIMED_LEITURA de cada tabela de ruido."""
+    with open(caminho, "w", encoding="utf-8", newline="\n") as f:
+        f.write(f"-- Gerado por mv_faturamento/gerar_mv.py (semente {SEMENTE}). Nao edite a mao.\n"
+                f"-- {len(tabelas)} tabelas fora do faturamento, como no schema de um HIS em producao.\n"
+                "ALTER SESSION SET CURRENT_SCHEMA = dbamv;\n")
+        for nome, ddl, linhas in tabelas:
+            f.write(f"\n{ddl};\nGRANT SELECT ON {nome} TO qimed_leitura;\n"
+                    f"CREATE SYNONYM qimed_leitura.{nome} FOR dbamv.{nome};\n")
+            if linhas:
+                _inserts(f, nome, linhas)
         f.write("COMMIT;\n")
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--saida", default=os.path.join(AQUI, "sql", "02_dados.sql"))
+    ap.add_argument("--saida", default=os.path.join(AQUI, "sql"), help="pasta do 02_dados.sql e do 03_ruido.sql")
     ap.add_argument("--resumo", action="store_true")
     a = ap.parse_args()
     tabelas = gerar()
     print({t: len(l) for t, l in tabelas.items()})
     print(esperado())
     if not a.resumo:
-        escrever(tabelas, a.saida)
+        escrever(tabelas, os.path.join(a.saida, "02_dados.sql"))
+        escrever_ruido(ruido(), os.path.join(a.saida, "03_ruido.sql"))
 
 
 if __name__ == "__main__":

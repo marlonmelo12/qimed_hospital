@@ -6,6 +6,7 @@ Movimento continuo nos mocks da Central de Conexoes, para a demo se comportar co
   rodadas, um pedido coletado cancelado e apagado (exclusao na origem).
 - ERP de RH (MariaDB): plantoes 'Escalado' que ja comecaram ganham o desfecho (Trabalhado, Falta ou Atestado).
 - ProntoSul (Oracle): entrada no pronto-atendimento e alta dos que estao abertos.
+- MV (Oracle 11g): atendimento de urgencia com conta ambulatorial aberta e itens.
 Uma fracao das escritas chega atrasada (horario de 3 min atras), como transacao que confirma depois da leitura.
 Banco fora do ar e pulado na rodada e tentado de novo na seguinte. Usa os usuarios donos (escrita), nunca o do QIMED.
 
@@ -38,6 +39,7 @@ URLS = {
     "erp_rh": os.getenv("ERP_RH_URL", "mysql+pymysql://erp:erp_mock@erp-rh-db:3306/erp_rh"),
     "prontosul": os.getenv("PRONTOSUL_URL",
                            "oracle+cx_oracle://prontosul:prontosul_dono@prontosul-db:1521/?service_name=FREEPDB1"),
+    "mv": os.getenv("MV_URL", "oracle+cx_oracle://dbamv:dbamv_dono@mv-db:1521/?service_name=XE"),
 }
 r = random.Random()
 
@@ -110,7 +112,27 @@ def prontosul(c) -> str:
     return f"1 entrada, {len(abertos)} altas"
 
 
-ACOES = {"labvida": labvida, "erp_rh": erp_rh, "prontosul": prontosul}
+def mv(c) -> str:
+    """Atendimento de urgencia com a conta ambulatorial aberta e 1 a 3 itens (Oracle 11g: sem FETCH FIRST)."""
+    pac, conv = c.execute(text("SELECT cd_paciente, cd_convenio FROM (SELECT p.cd_paciente, c.cd_convenio FROM "
+                               "paciente p CROSS JOIN convenio c ORDER BY DBMS_RANDOM.VALUE) WHERE ROWNUM = 1")).one()
+    at = c.execute(text("SELECT NVL(MAX(cd_atendimento), 0) + 1 FROM atendime")).scalar()
+    conta = c.execute(text("SELECT NVL(MAX(cd_reg_amb), 0) + 1 FROM reg_amb")).scalar()
+    t = _quando()
+    procs = c.execute(text("SELECT cd_pro_fat, vl_tabela FROM pro_fat WHERE cd_gru_pro IN ('PROC', 'MED', 'MAT')")).all()
+    itens = r.sample(procs, r.randint(1, 3))
+    total = round(sum(float(v) for _, v in itens), 2)
+    c.execute(text("INSERT INTO atendime VALUES (:a, :p, :c, 'U', :t, :t, NULL, :t)"),
+              {"a": at, "p": pac, "c": conv, "t": t})
+    c.execute(text("INSERT INTO reg_amb VALUES (:r, :a, :c, NULL, :t, :v, 'N', :t)"),
+              {"r": conta, "a": at, "c": conv, "t": t, "v": total})
+    for n, (cd, vl) in enumerate(itens, 1):
+        c.execute(text("INSERT INTO itreg_amb VALUES (:r, :n, :cd, :t, 1, :v, :v, :t)"),
+                  {"r": conta, "n": n, "cd": cd, "t": t, "v": float(vl)})
+    return f"1 atendimento com conta de {len(itens)} itens"
+
+
+ACOES = {"labvida": labvida, "erp_rh": erp_rh, "prontosul": prontosul, "mv": mv}
 API = os.getenv("QIMED_PIPELINE_API_URL", "http://qimed-api:8000/api/v1")
 
 
@@ -136,7 +158,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument("--intervalo", type=float, default=20)
     ap.add_argument("--rodadas", type=int, default=0, help="0 = sem fim")
-    ap.add_argument("--bancos", default=",".join(ACOES))
+    ap.add_argument("--bancos", default="labvida,erp_rh,prontosul", help=f"entre {','.join(ACOES)}")
     ap.add_argument("--reler", type=_conexoes, default={},
                     help="banco=id_connection,...: depois de cada escrita pede a releitura da conexao (demo)")
     a = ap.parse_args()
