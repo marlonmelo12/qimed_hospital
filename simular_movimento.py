@@ -11,12 +11,19 @@ Banco fora do ar e pulado na rodada e tentado de novo na seguinte. Usa os usuari
 
   docker compose --profile jobs run --rm --no-deps --entrypoint python qimed-pipeline \
       mocks/simular_movimento.py [--intervalo 20] [--rodadas 0] [--bancos labvida,erp_rh,prontosul]
+      [--reler labvida=202,erp_rh=203]
+
+Com --reler, depois de cada escrita o simulador pede a releitura da conexao ao pipeline, em vez de esperar
+QIMED_ONBOARDING_RELEITURA_MIN: so na demo, para o evento chegar logo ao painel.
 """
 import argparse
+import json
 import os
 import random
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta
 
 from sqlalchemy import create_engine, text
@@ -104,6 +111,25 @@ def prontosul(c) -> str:
 
 
 ACOES = {"labvida": labvida, "erp_rh": erp_rh, "prontosul": prontosul}
+API = os.getenv("QIMED_PIPELINE_API_URL", "http://qimed-api:8000/api/v1")
+
+
+def reler(id_connection: int) -> str:
+    """Pede a releitura da conexao ao pipeline (POST /pipeline/onboarding/{id}/reler), so na demo: um hospital real
+    nao avisa o QIMED quando grava. Falha aqui nao para o simulador; a releitura agendada pega depois."""
+    req = urllib.request.Request(f"{API}/pipeline/onboarding/{id_connection}/reler", method="POST", data=b"")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read()).get("disparo", "?")
+    except urllib.error.HTTPError as e:  # 409: conexao ainda nao carregada (sem aprovacao)
+        return f"HTTP {e.code}"
+    except Exception as e:  # noqa: BLE001 - API fora do ar
+        return f"falhou ({type(e).__name__})"
+
+
+def _conexoes(texto: str) -> dict:
+    """'labvida=202,erp_rh=203' -> {'labvida': 202, 'erp_rh': 203}: o id da conexao de cada banco na Central."""
+    return {b.strip(): int(i) for b, i in (p.split("=") for p in texto.split(",") if p.strip())}
 
 
 def main():
@@ -111,6 +137,8 @@ def main():
     ap.add_argument("--intervalo", type=float, default=20)
     ap.add_argument("--rodadas", type=int, default=0, help="0 = sem fim")
     ap.add_argument("--bancos", default=",".join(ACOES))
+    ap.add_argument("--reler", type=_conexoes, default={},
+                    help="banco=id_connection,...: depois de cada escrita pede a releitura da conexao (demo)")
     a = ap.parse_args()
     engines = {b: create_engine(URLS[b], pool_pre_ping=True) for b in a.bancos.split(",")}
     n = 0
@@ -119,7 +147,10 @@ def main():
         for b, eng in engines.items():
             try:
                 with eng.begin() as c:
-                    print(f"[{datetime.now():%H:%M:%S}] {b}: {ACOES[b](c)}", flush=True)
+                    feito = ACOES[b](c)
+                # depois do commit: pedir antes faria a releitura ler o banco sem a escrita
+                pedido = f"; releitura {reler(a.reler[b])}" if b in a.reler else ""
+                print(f"[{datetime.now():%H:%M:%S}] {b}: {feito}{pedido}", flush=True)
             except Exception as e:  # banco fora do ar: tenta na proxima rodada
                 print(f"[{datetime.now():%H:%M:%S}] {b}: falhou ({type(e).__name__}: {str(e).splitlines()[0][:120]})",
                       flush=True)
