@@ -1,0 +1,73 @@
+# Fabrica do mock OpenELIS: a aplicacao oficial (tag 3.3.0) para popular pela API REST do proprio produto.
+# Roda so quando a semente muda; o teste sobe apenas o banco (../docker-compose.yml) restaurado do dump.
+# Copia reduzida do docker-compose.yml do OpenELIS-Global-2 3.3.0: sem o front React e sem o proxy nginx.
+name: qimed-openelis-fab
+services:
+  certs:
+    image: itechuw/certgen:main
+    restart: "no"
+    environment:
+      - KEYSTORE_PW=kspass
+      - TRUSTSTORE_PW=tspass
+    volumes:
+      - trust:/etc/openelis-global
+      - keys:/etc/ssl/private/
+      - certs:/etc/ssl/certs/
+
+  db.openelis.org:
+    image: itechuw/openelis-global-2-database:3.3.0
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=admin
+      - POSTGRES_DB=clinlims
+      - DB_PASSWORD=clinlims
+      - DB_SUPERUSER_PASSWORD=superuser
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "clinlims", "-U", "clinlims"]
+      interval: 10s
+      retries: 20
+
+  oe.openelis.org:
+    image: itechuw/openelis-global-2:3.3.0
+    depends_on:
+      db.openelis.org: {condition: service_healthy}
+      certs: {condition: service_completed_successfully}
+    ports:
+      - "127.0.0.1:8443:8443"
+    environment:
+      - DEFAULT_PW=adminADMIN!
+      - TZ=America/Sao_Paulo
+      - CATALINA_OPTS=-Ddatasource.url=jdbc:postgresql://db.openelis.org:5432/clinlims -Ddatasource.username=clinlims -Ddatasource.password=clinlims -Doe.ssl.truststorepath=/etc/openelis-global/truststore -Doe.ssl.truststorepassword=tspass -Doe.ssl.keystorepath=/etc/openelis-global/keystore -Doe.ssl.keystorepassword=kspass
+    volumes:
+      - trust:/etc/openelis-global
+      - ./volume/analyzer/analyzer-test-map.csv:/var/lib/openelis-global/analyzer/analyzer-test-map.csv
+      - ./volume/properties/SystemConfiguration.properties:/var/lib/openelis-global/properties/SystemConfiguration.properties
+      - ./volume/odoo/odoo-test-product-mapping.csv:/var/lib/openelis-global/odoo/odoo-test-product-mapping.csv
+      - ./volume/translation:/var/lib/openelis-global/translation:ro
+    secrets:
+      - source: common.properties
+
+  fhir.openelis.org:
+    image: itechuw/openelis-global-2-fhir:3.3.0
+    depends_on:
+      db.openelis.org: {condition: service_healthy}
+      certs: {condition: service_completed_successfully}
+    environment:
+      TZ: America/Sao_Paulo
+      JAVA_OPTS: "-Djavax.net.ssl.trustStore=/etc/openelis-global/truststore -Djavax.net.ssl.trustStorePassword=tspass -Djavax.net.ssl.trustStoreType=pkcs12 -Djavax.net.ssl.keyStore=/etc/openelis-global/keystore -Djavax.net.ssl.keyStorePassword=kspass -Djavax.net.ssl.keyStoreType=pkcs12"
+      CATALINA_OPTS: "-Dhapi.ssl.truststorepath=/etc/openelis-global/truststore -Dhapi.ssl.truststorepassword=tspass -Dhapi.ssl.keystorepath=/etc/openelis-global/keystore -Dhapi.ssl.keystorepassword=kspass"
+      FHIR_DATASOURCE_URL: "jdbc:postgresql://db.openelis.org:5432/clinlims?currentSchema=clinlims"
+      FHIR_DATASOURCE_USERNAME: clinlims
+      FHIR_DATASOURCE_PASSWORD: clinlims
+      FHIR_SERVER_ADRESS: "http://fhir.openelis.org:8080/fhir/"
+    volumes:
+      - trust:/etc/openelis-global
+
+secrets:
+  common.properties:
+    file: ./volume/properties/common.properties
+
+volumes:
+  trust:
+  keys:
+  certs:

@@ -1,0 +1,32 @@
+# Mock laboratorio: banco de um OpenELIS Global 3.3.0 real, gerado pela fabrica (fabrica/fabricar.sh). So o banco sobe.
+#   docker compose -f openelis/docker-compose.yml up -d --wait   # Postgres 14 em 127.0.0.1:5438
+#   docker compose -f openelis/docker-compose.yml down -v        # a proxima subida recarrega o dump
+services:
+  openelis-db:
+    image: postgres:14-alpine
+    container_name: qimed-openelis-db
+    environment:
+      POSTGRES_DB: clinlims
+      POSTGRES_USER: openelis
+      POSTGRES_PASSWORD: openelis_mock
+      TZ: America/Sao_Paulo
+    ports:
+      - "127.0.0.1:5438:5432"
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d:ro
+      - openelis-data:/var/lib/postgresql/data
+    healthcheck:
+      # pronto so depois do restore e do usuario de leitura (o init roda num servidor temporario)
+      test: ["CMD-SHELL", "psql -U openelis -d clinlims -tAc \"select 1 from pg_roles where rolname='qimed_leitura'\" | grep -q 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      - qimed-network
+
+volumes:
+  openelis-data:
+
+networks:
+  qimed-network:
+    external: true

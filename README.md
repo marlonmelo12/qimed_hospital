@@ -13,7 +13,9 @@ que rodam na imagem do pipeline: o `simular_movimento.py` e a fábrica do OpenEM
 | `pep_fhir/` | Prontuário FHIR R4 do mesmo hospital | HAPI FHIR | YAML do pipeline |
 | `gnuhealth/` | GNU Health real | Postgres | Central de Conexões |
 | `labvida/` | Laboratório | Postgres | Central de Conexões |
+| `openelis/` | OpenELIS Global 3.3 real (laboratório) | Postgres | Central de Conexões |
 | `erp_rh/` | ERP de RH e ponto | MariaDB | Central de Conexões |
+| `frappe_hrms/` | Frappe HRMS real (escala e ponto) | MariaDB | Central de Conexões |
 | `prontosul/` | Pronto-atendimento | Oracle | Central de Conexões |
 | `mv_faturamento/` | Faturamento de convênio no estilo MV (Hospital São Lucas) | Oracle | Central de Conexões |
 | `openemr/` | OpenEMR 8.5 real | MariaDB | Central de Conexões |
