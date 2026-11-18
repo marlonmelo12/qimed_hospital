@@ -36,6 +36,12 @@ CREATE TABLE dbo.resultado_exame (
     dt_liberacao    DATETIME,
     atualizado_em   DATETIME
 );
+GO
+-- fora do dbo de proposito: o usuario de leitura enxerga, a descoberta (que le o schema padrao) nao
+CREATE SCHEMA integracao;
+GO
+CREATE TABLE integracao.fila_hl7 (id INT PRIMARY KEY, recebido_em DATETIME NOT NULL, mensagem NVARCHAR(400));
+GO
 -- sem chave primaria de proposito
 CREATE TABLE dbo.log_integracao (
     dt_evento DATETIME,
