@@ -1,0 +1,38 @@
+# LabVida em SQL Server 2022 (ficticio): o roteiro do labvida/ num banco SQL Server. Entra pela Central de Conexoes.
+#
+#   docker compose -f labvida_sqlserver/docker-compose.yml up -d --wait
+#
+# O seed roda so na primeira subida (volume vazio). Para recarregar: down -v e up de novo. ~1,5 GB de RAM.
+
+services:
+  labvida-sqlserver-db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: qimed-labvida-sqlserver-db
+    entrypoint: ["/bin/bash", "/seed/iniciar.sh"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${LABVIDA_SQLSERVER_SA_PASSWORD:-Mock_sa_2026}
+      MSSQL_MEMORY_LIMIT_MB: "1536"
+      TZ: America/Sao_Paulo
+    ports:
+      - "127.0.0.1:1434:1433"
+    volumes:
+      - ./sql:/seed/sql:ro
+      - ./iniciar.sh:/seed/iniciar.sh:ro
+      - labvida-sqlserver-data:/var/opt/mssql
+    healthcheck:  # saudavel so depois do seed: o usuario de leitura enxerga o log, a ultima tabela carregada
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -b -S localhost -U qimed_leitura -P leitura_mock -d labvida -Q \"SELECT TOP 1 1 FROM dbo.log_integracao\""]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 30s
+    networks:
+      - qimed-network
+
+volumes:
+  labvida-sqlserver-data:
+
+networks:
+  qimed-network:
+    external: true

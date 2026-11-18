@@ -14,6 +14,7 @@ que rodam na imagem do pipeline: o `simular_movimento.py` e a fábrica do OpenEM
 | `gnuhealth/` | GNU Health real | Postgres | Central de Conexões |
 | `labvida/` | Laboratório | Postgres | Central de Conexões |
 | `openelis/` | OpenELIS Global 3.3 real (laboratório) | Postgres | Central de Conexões |
+| `labvida_sqlserver/` | Laboratório (roteiro do LabVida) | SQL Server 2022 | Central de Conexões |
 | `erp_rh/` | ERP de RH e ponto | MariaDB | Central de Conexões |
 | `frappe_hrms/` | Frappe HRMS real (escala e ponto) | MariaDB | Central de Conexões |
 | `prontosul/` | Pronto-atendimento | Oracle | Central de Conexões |
