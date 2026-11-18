@@ -50,6 +50,8 @@
   .num { font-variant-numeric: tabular-nums; }
   .linha { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
   label { display: inline-flex; align-items: center; gap: 6px; }
+  select { font: inherit; font-size: 13px; padding: 3px 6px; border: 1px solid var(--bd); border-radius: 6px; background: var(--bg); color: var(--tx); }
+  code { font: 12px ui-monospace, Consolas, monospace; }
   input[type=number] { width: 80px; font: inherit; padding: 3px 6px; border: 1px solid var(--bd); border-radius: 6px; background: var(--bg); color: var(--tx); }
   .eventos { max-height: 260px; overflow-y: auto; font: 12px/1.5 ui-monospace, Consolas, monospace; }
   .ev-falha { color: var(--err); }
@@ -95,6 +97,21 @@
     <div class="grid" id="bancos"></div>
     <h2 style="margin-top:18px">Últimos eventos</h2>
     <div class="eventos" id="eventos"><span class="mut">Nenhum evento ainda.</span></div>
+  </section>
+
+  <section class="card">
+    <h2>Cenários de demo</h2>
+    <p class="mut small" style="margin:-6px 0 12px">Valem com o simulador rodando e o movimento ligado no banco. Para simular banco fora do ar, use Derrubar na lista de sistemas.</p>
+    <div class="grid" id="cenarios"></div>
+    <div class="banco" style="margin-top:12px">
+      <h3>Coluna nova na origem</h3>
+      <div class="small mut" style="margin-bottom:8px">Cria uma coluna <code>observacao_HHMMSS</code>, como uma atualização do sistema faria. Na próxima releitura, a Central volta a pedir aprovação e lista a coluna.</div>
+      <div class="btns">
+        <select id="col-banco"></select>
+        <button id="col-criar">Criar coluna</button>
+      </div>
+      <div id="pedidos" class="small" style="margin-top:8px"></div>
+    </div>
   </section>
 
   <section class="card" id="log-card" hidden>
@@ -167,6 +184,28 @@ function render(e) {
     </div>`;
   }).join("");
 
+  const EFEITO = {faltas: "40% de ausência nos plantões que terminam (normal: 7%). Banco: ERP de RH.",
+                  pico: "5 vezes mais entradas por rodada no LabVida, ProntoSul e MV.",
+                  exclusoes: "5 pedidos apagados por rodada no LabVida (normal: 1 em 20% das rodadas)."};
+  const agoraIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+  $("cenarios").innerHTML = Object.entries(sim.cenarios_disponiveis).map(([n, nome]) => {
+    const fim = (cfg.cenarios || {})[n], ativo = fim && fim > agoraIso;
+    return `<div class="banco">
+      <h3>${esc(nome)} ${ativo ? pill("acao", "até " + fim.slice(11, 16)) : ""}</h3>
+      <div class="mut small" style="margin-bottom:8px">${esc(EFEITO[n] || "")}</div>
+      <div class="btns">${ativo
+        ? `<button data-cenario="${n}" data-min="0">Encerrar</button>`
+        : `<button data-cenario="${n}" data-min="5">5 min</button><button data-cenario="${n}" data-min="15">15 min</button><button data-cenario="${n}" data-min="60">1 h</button>`}
+      </div></div>`;
+  }).join("");
+  const sel = $("col-banco");
+  if (!sel.options.length) sel.innerHTML = Object.entries(sim.bancos).map(([b, pasta]) =>
+    `<option value="${b}">${esc(porPasta[pasta].nome)}</option>`).join("");
+  const peds = Object.values((est && est.pedidos) || {}).reverse();
+  const pendentes = (cfg.pedidos || []).filter(p => !(est && est.pedidos && est.pedidos[p.id]));
+  $("pedidos").innerHTML = pendentes.map(p => `<div class="mut">${esc(p.banco)}: aguardando a próxima rodada do simulador</div>`).join("")
+    + peds.map(p => `<div class="${p.ok ? "" : "ev-falha"}">${esc(p.quando)} · ${esc(p.banco)}: ${esc(p.texto)}</div>`).join("");
+
   const evs = (est && est.eventos) || [];
   $("eventos").innerHTML = evs.length ? evs.map(v =>
     `<div class="${v.ok ? "" : "ev-falha"}">${esc(v.quando)}  ${esc(v.banco.padEnd(10))} ${esc(v.texto)}</div>`).join("")
@@ -213,6 +252,10 @@ document.addEventListener("click", async ev => {
     atualizar();
   } else if (b.dataset.log) {
     mostrarLog(b.dataset.log);
+  } else if (b.dataset.cenario) {
+    b.disabled = true;
+    try { await api("/api/cenario", {nome: b.dataset.cenario, minutos: Number(b.dataset.min)}); } catch (err) { alert(err.message); }
+    atualizar();
   }
 });
 document.addEventListener("change", ev => { if (ev.target.matches("[data-banco]")) salvarCfg(); });
@@ -221,6 +264,12 @@ document.addEventListener("focusin", ev => { if (ev.target.matches("input[type=n
 document.addEventListener("focusout", ev => { if (ev.target.matches("input[type=number]")) salvarCfg(); });
 document.addEventListener("keydown", ev => { if (ev.key === "Enter" && ev.target.matches("input[type=number]")) ev.target.blur(); });
 $("cfg-salvar").onclick = salvarCfg;
+$("col-criar").onclick = async () => {
+  const banco = $("col-banco").value, nome = $("col-banco").selectedOptions[0].text;
+  if (!confirm(`Criar uma coluna nova em ${nome}? Ela só some com Resetar.`)) return;
+  try { await api("/api/pedido", {tipo: "coluna_nova", banco}); } catch (err) { alert(err.message); }
+  atualizar();
+};
 $("sim-iniciar").onclick = async () => { try { await api("/api/simulador", {acao: "iniciar"}); } catch (err) { alert(err.message); } atualizar(); };
 $("sim-parar").onclick = async () => { $("sim-parar").disabled = true; try { await api("/api/simulador", {acao: "parar"}); } catch (err) { alert(err.message); } atualizar(); };
 $("sim-log").onclick = () => mostrarLog("simulador");

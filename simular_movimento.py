@@ -47,6 +47,16 @@ URLS = {
 }
 r = random.Random()
 ATRASO = 0.15  # fracao das escritas com horario de 3 min atras; o painel muda por atraso_pct
+CENARIOS = set()  # cenarios de demo ativos nesta rodada (config "cenarios": {nome: fim ISO}), so com --controle
+PICO = 5  # no cenario "pico", cada banco com entrada nova escreve 5 vezes por rodada
+# cenario "coluna_nova": o que o hospital faria ao atualizar o sistema; {c} = nome da coluna. So em tabela onde o
+# simulador nao faz INSERT posicional (atendimento_pa, atendime, pedido_exame): la a coluna a mais o quebraria
+COLUNA_NOVA = {
+    "labvida": "ALTER TABLE paciente_cadastro ADD COLUMN {c} VARCHAR(80)",
+    "erp_rh": "ALTER TABLE escala_ponto ADD COLUMN {c} VARCHAR(80)",
+    "prontosul": "ALTER TABLE paciente ADD ({c} VARCHAR2(80))",
+    "mv": "ALTER TABLE convenio ADD ({c} VARCHAR2(80))",
+}
 
 
 def _quando() -> datetime:
@@ -63,7 +73,10 @@ def labvida(c) -> str:
               {"i": novo, "n": f"Paciente Simulado {novo}", "c": _mascara(_cpf(r)), "d": datetime(1980, 1, 1),
                "s": r.choice(["Masculino", "Feminino"]), "e": f"sim{novo}@exemplo.com.br", "cel": "(51) 90000-0000",
                "t": t})
-    ids = [x[0] for x in c.execute(text("SELECT id_paciente FROM paciente_cadastro ORDER BY random() LIMIT 2"))]
+    # cada rodada libera 2 coletados; no cenario "exclusoes" entram 5 pedidos a mais para haver o que apagar
+    n_pedidos = 7 if "exclusoes" in CENARIOS else 2
+    ids = [x[0] for x in c.execute(text("SELECT id_paciente FROM paciente_cadastro ORDER BY random() LIMIT :n"),
+                                   {"n": n_pedidos})]
     for pac in ids:
         pid = c.execute(text("SELECT COALESCE(MAX(id_pedido), 0) + 1 FROM pedido_exame")).scalar()
         c.execute(text("INSERT INTO pedido_exame VALUES (:p, :pac, :t, '12345', 'Particular', 'Coletado', :t)"),
@@ -80,10 +93,13 @@ def labvida(c) -> str:
                   {"r": rid, "p": pid, "c": cod, "d": desc, "v": round(max(0.1, r.gauss(media, dp)), 2), "u": un,
                    "t": t})
     cancelados = 0
-    if r.random() < 0.2:  # pedido cancelado e apagado da origem: a reconciliacao diaria do QIMED tem de ver
+    # pedido cancelado e apagado da origem: a reconciliacao diaria do QIMED tem de ver. No cenario "exclusoes", 5 por
+    # rodada em vez de 1 em 20% delas
+    lote = 5 if "exclusoes" in CENARIOS else (1 if r.random() < 0.2 else 0)
+    if lote:
         cancelados = c.execute(text(
-            "DELETE FROM pedido_exame WHERE id_pedido = (SELECT id_pedido FROM pedido_exame WHERE situacao = 'Coletado' "
-            "ORDER BY random() LIMIT 1)")).rowcount
+            "DELETE FROM pedido_exame WHERE id_pedido IN (SELECT id_pedido FROM pedido_exame WHERE situacao = 'Coletado' "
+            "ORDER BY random() LIMIT :n)"), {"n": lote}).rowcount
     return f"1 paciente, {len(ids)} pedidos, {len(coletados)} liberados, {cancelados} cancelados"
 
 
@@ -91,8 +107,10 @@ def erp_rh(c) -> str:
     abertos = c.execute(text(
         "SELECT id_marcacao, dt_entrada_prevista, dt_saida_prevista FROM escala_ponto "
         "WHERE situacao = 'Escalado' AND dt_entrada_prevista <= NOW() ORDER BY dt_entrada_prevista LIMIT 8")).fetchall()
+    # cenario "faltas": 40% de ausencia em vez de 7%, para o absenteismo subir no painel do QIMED
+    pesos = [0.60, 0.25, 0.15] if "faltas" in CENARIOS else [0.93, 0.03, 0.04]
     for mid, ent, sai in abertos:
-        sit = r.choices(["Trabalhado", "Falta", "Atestado"], [0.93, 0.03, 0.04])[0]
+        sit = r.choices(["Trabalhado", "Falta", "Atestado"], pesos)[0]
         presente = sit == "Trabalhado"
         c.execute(text("UPDATE escala_ponto SET situacao = :s, dt_entrada_registrada = :e, dt_saida_registrada = :x, "
                        "dt_alteracao = :t WHERE id_marcacao = :m"),
@@ -173,7 +191,23 @@ def _ler_controle(caminho: str, padrao: dict) -> dict:
         cfg["bancos"] = [b for b, ligado in lido["bancos"].items() if ligado and b in ACOES]
     if isinstance(lido.get("reler"), dict):
         cfg["reler"] = {b: int(i) for b, i in lido["reler"].items() if b in ACOES and str(i).strip().isdigit()}
+    agora = datetime.now().isoformat(timespec="seconds")
+    cfg["cenarios"] = sorted(n for n, fim in (lido.get("cenarios") or {}).items() if str(fim) > agora)
+    cfg["pedidos"] = [p for p in (lido.get("pedidos") or []) if isinstance(p, dict) and p.get("id")]
     return cfg
+
+
+def _executar_pedido(p: dict, engines: dict) -> str:
+    """Acao de uma vez so pedida pelo painel. Hoje so a coluna nova, que a Central tem de pegar como drift."""
+    b = p.get("banco")
+    if p.get("tipo") != "coluna_nova" or b not in COLUNA_NOVA:
+        return "pedido desconhecido"
+    coluna = f"observacao_{datetime.now():%H%M%S}"
+    if b not in engines:
+        engines[b] = create_engine(URLS[b], pool_pre_ping=True)
+    with engines[b].begin() as c:
+        c.execute(text(COLUNA_NOVA[b].format(c=coluna)))
+    return f"coluna {coluna} criada"
 
 
 def _gravar_json(caminho: str, dados: dict) -> None:
@@ -195,15 +229,31 @@ def main():
     a = ap.parse_args()
     # docker stop manda SIGTERM ao PID 1, que o Python ignora sem handler: sem isto o painel espera o SIGKILL
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    padrao = {"intervalo": a.intervalo, "atraso_pct": ATRASO * 100, "bancos": a.bancos.split(","), "reler": a.reler}
+    padrao = {"intervalo": a.intervalo, "atraso_pct": ATRASO * 100, "bancos": a.bancos.split(","), "reler": a.reler,
+              "cenarios": [], "pedidos": []}
     estado_path = os.path.join(os.path.dirname(a.controle), "estado.json") if a.controle else None
-    estado = {"inicio": datetime.now().isoformat(timespec="seconds"), "rodada": 0, "bancos": {}, "eventos": []}
+    estado = {"inicio": datetime.now().isoformat(timespec="seconds"), "rodada": 0, "bancos": {}, "eventos": [],
+              "pedidos": {}}
     engines = {}
     n = 0
     while not a.rodadas or n < a.rodadas:
         n += 1
         cfg = _ler_controle(a.controle, padrao) if a.controle else padrao
         ATRASO = cfg["atraso_pct"] / 100
+        CENARIOS.clear()
+        CENARIOS.update(cfg["cenarios"])
+        for p in cfg["pedidos"]:
+            if p["id"] in estado["pedidos"]:
+                continue
+            agora = f"{datetime.now():%H:%M:%S}"
+            try:
+                linha, ok = _executar_pedido(p, engines), True
+            except Exception as e:  # noqa: BLE001 - banco fora do ar: o painel mostra e o usuario pede de novo
+                linha, ok = f"falhou ({type(e).__name__}: {str(e).splitlines()[0][:120]})", False
+            estado["pedidos"][p["id"]] = {"quando": agora, "ok": ok, "texto": linha, **p}
+            estado["eventos"] = ([{"quando": agora, "banco": p.get("banco", "?"), "ok": ok, "texto": linha}]
+                                 + estado["eventos"])[:40]
+            print(f"[{agora}] {p.get('banco')}: {linha}", flush=True)
         for b in cfg["bancos"]:
             if b not in engines:
                 engines[b] = create_engine(URLS[b], pool_pre_ping=True)
@@ -211,7 +261,10 @@ def main():
             agora = f"{datetime.now():%H:%M:%S}"
             try:
                 with engines[b].begin() as c:
-                    feito = ACOES[b](c)
+                    # o ERP so da desfecho a plantao ja comecado, entao o pico nao vale para ele
+                    vezes = PICO if "pico" in CENARIOS and b != "erp_rh" else 1
+                    feitos = [ACOES[b](c) for _ in range(vezes)]
+                    feito = feitos[0] if vezes == 1 else f"pico, {vezes}x: {feitos[-1]}"
                 # depois do commit: pedir antes faria a releitura ler o banco sem a escrita
                 pedido = f"; releitura {reler(cfg['reler'][b])}" if b in cfg["reler"] else ""
                 linha, cont["ok"] = f"{feito}{pedido}", cont["ok"] + 1

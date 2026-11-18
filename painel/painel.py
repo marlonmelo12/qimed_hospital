@@ -43,7 +43,11 @@ SISTEMAS = [
 ]
 PASTAS = {s[0]: s for s in SISTEMAS}
 BANCOS_SIM = {s[5]: s[0] for s in SISTEMAS if s[5]}
-CONFIG_PADRAO = {"intervalo": 20, "atraso_pct": 15, "bancos": {b: False for b in BANCOS_SIM}, "reler": {}}
+CONFIG_PADRAO = {"intervalo": 20, "atraso_pct": 15, "bancos": {b: False for b in BANCOS_SIM}, "reler": {},
+                 "cenarios": {}, "pedidos": []}
+# cenarios com duracao: o simulador le "cenarios": {nome: fim ISO} e muda o comportamento ate o fim
+CENARIOS = {"faltas": "Onda de faltas no RH", "pico": "Pico de atendimentos", "exclusoes": "Exclusões na origem"}
+CONTROLE_SIM = {"labvida", "erp_rh", "prontosul", "mv"}  # bancos onde o simulador sabe criar a coluna nova
 
 acoes = {}  # pasta -> {"acao", "inicio", "erro"}: o que o painel esta fazendo agora em cada sistema
 memoria = {"por_container": {}, "total": None, "quando": None}
@@ -118,13 +122,24 @@ def ler_json(caminho: Path, padrao):
 
 
 def gravar_config(cfg: dict) -> dict:
-    atual = ler_json(CONFIG, CONFIG_PADRAO)
+    """Grava o que veio por cima da config atual; cenarios e pedidos so mudam pelas rotas proprias."""
+    with trava:
+        return _gravar_config(cfg)
+
+
+def _gravar_config(cfg: dict) -> dict:
+    atual = {**CONFIG_PADRAO, **ler_json(CONFIG, CONFIG_PADRAO)}
+    feitos = set(((ler_json(ESTADO, None) or {}).get("pedidos") or {}))
     novo = {
         "intervalo": max(2, float(cfg.get("intervalo", atual["intervalo"]))),
         "atraso_pct": min(100, max(0, float(cfg.get("atraso_pct", atual["atraso_pct"])))),
         "bancos": {b: bool((cfg.get("bancos") or atual["bancos"]).get(b, False)) for b in BANCOS_SIM},
         "reler": {b: int(i) for b, i in (cfg.get("reler", atual.get("reler")) or {}).items()
                   if b in BANCOS_SIM and str(i).strip().isdigit()},
+        "cenarios": {n: f for n, f in cfg.get("cenarios", atual["cenarios"]).items()
+                     if n in CENARIOS and f > time.strftime("%Y-%m-%dT%H:%M:%S")},
+        # pedido ja feito sai da lista: o simulador reiniciado nao o repete
+        "pedidos": [p for p in cfg.get("pedidos", atual["pedidos"]) if p.get("id") not in feitos],
     }
     ESTADO_DIR.mkdir(parents=True, exist_ok=True)
     tmp = CONFIG.with_suffix(".tmp")
@@ -133,10 +148,36 @@ def gravar_config(cfg: dict) -> dict:
     return novo
 
 
+def acao_cenario(nome: str, minutos) -> tuple:
+    """Liga o cenario por N minutos; 0 encerra."""
+    if nome not in CENARIOS:
+        return 400, {"erro": "cenário desconhecido"}
+    try:
+        minutos = max(0, min(240, float(minutos)))
+    except (TypeError, ValueError):
+        return 400, {"erro": "minutos inválido"}
+    with trava:
+        cen = dict({**CONFIG_PADRAO, **ler_json(CONFIG, CONFIG_PADRAO)}["cenarios"])
+        if minutos:
+            cen[nome] = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() + minutos * 60))
+        else:
+            cen.pop(nome, None)
+        return 200, _gravar_config({"cenarios": cen})
+
+
+def acao_pedido(tipo: str, banco: str) -> tuple:
+    if tipo != "coluna_nova" or banco not in CONTROLE_SIM:
+        return 400, {"erro": "pedido ou banco desconhecido"}
+    with trava:
+        pedidos = list({**CONFIG_PADRAO, **ler_json(CONFIG, CONFIG_PADRAO)}["pedidos"])
+        pedidos.append({"id": f"{tipo}-{banco}-{time.time_ns()}", "tipo": tipo, "banco": banco})
+        return 202, _gravar_config({"pedidos": pedidos})
+
+
 def acao_simulador(acao: str):
     if acao == "iniciar":
-        if not CONFIG.exists():
-            gravar_config(CONFIG_PADRAO)
+        # pedido pendente de uma execucao anterior nao vale: o estado (com os feitos) e zerado agora
+        gravar_config({"pedidos": []})
         ESTADO.unlink(missing_ok=True)  # contadores da rodada anterior nao valem
         docker("rm", "-f", SIMULADOR, timeout=30)
         # TZ como no compose do pipeline: sem ele o datetime.now() do container e UTC e a escrita fica 3 h no futuro
@@ -183,7 +224,7 @@ def estado_geral() -> dict:
         "sistemas": sistemas,
         "simulador": {"rodando": sim_st == "running", "status": sim_stt, "imagem": IMAGEM,
                       "config": ler_json(CONFIG, CONFIG_PADRAO), "estado": ler_json(ESTADO, None),
-                      "bancos": BANCOS_SIM},
+                      "bancos": BANCOS_SIM, "cenarios_disponiveis": CENARIOS},
         "memoria": {"total": memoria["total"], "quando": memoria["quando"]},
         "docker_ok": bool(cts) or docker("info", "--format", "ok", timeout=10)[0] == 0,
     }
@@ -230,6 +271,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._responder(*acao_sistema(corpo.get("pasta"), corpo.get("acao")))
         if rota == "/api/simulador":
             return self._responder(*acao_simulador(corpo.get("acao")))
+        if rota == "/api/cenario":
+            return self._responder(*acao_cenario(corpo.get("nome"), corpo.get("minutos")))
+        if rota == "/api/pedido":
+            return self._responder(*acao_pedido(corpo.get("tipo"), corpo.get("banco")))
         if rota == "/api/config":
             try:
                 return self._responder(200, gravar_config(corpo))
