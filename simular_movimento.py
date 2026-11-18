@@ -16,11 +16,15 @@ Banco fora do ar e pulado na rodada e tentado de novo na seguinte. Usa os usuari
 
 Com --reler, depois de cada escrita o simulador pede a releitura da conexao ao pipeline, em vez de esperar
 QIMED_ONBOARDING_RELEITURA_MIN: so na demo, para o evento chegar logo ao painel.
+
+Com --controle <config.json> (o painel em painel/), intervalo, bancos ligados, fracao atrasada e --reler saem desse
+arquivo, relido a cada rodada, e os contadores vao para estado.json na mesma pasta. Os argumentos viram o padrao.
 """
 import argparse
 import json
 import os
 import random
+import signal
 import sys
 import time
 import urllib.error
@@ -42,12 +46,13 @@ URLS = {
     "mv": os.getenv("MV_URL", "oracle+cx_oracle://dbamv:dbamv_dono@mv-db:1521/?service_name=XE"),
 }
 r = random.Random()
+ATRASO = 0.15  # fracao das escritas com horario de 3 min atras; o painel muda por atraso_pct
 
 
 def _quando() -> datetime:
-    """Agora, ou 3 min atras em 15% das escritas (chegada atrasada)."""
+    """Agora, ou 3 min atras em ATRASO das escritas (chegada atrasada)."""
     agora = datetime.now().replace(microsecond=0)
-    return agora - timedelta(minutes=3) if r.random() < 0.15 else agora
+    return agora - timedelta(minutes=3) if r.random() < ATRASO else agora
 
 
 def labvida(c) -> str:
@@ -154,30 +159,97 @@ def _conexoes(texto: str) -> dict:
     return {b.strip(): int(i) for b, i in (p.split("=") for p in texto.split(",") if p.strip())}
 
 
+def _ler_controle(caminho: str, padrao: dict) -> dict:
+    """Config do painel por cima dos argumentos. Arquivo ausente ou pela metade: fica o padrao (nunca para)."""
+    try:
+        with open(caminho, encoding="utf-8") as fh:
+            lido = json.load(fh)
+    except (OSError, ValueError):
+        return padrao
+    cfg = dict(padrao)
+    cfg["intervalo"] = max(2.0, float(lido.get("intervalo", padrao["intervalo"])))
+    cfg["atraso_pct"] = min(100.0, max(0.0, float(lido.get("atraso_pct", padrao["atraso_pct"]))))
+    if isinstance(lido.get("bancos"), dict):
+        cfg["bancos"] = [b for b, ligado in lido["bancos"].items() if ligado and b in ACOES]
+    if isinstance(lido.get("reler"), dict):
+        cfg["reler"] = {b: int(i) for b, i in lido["reler"].items() if b in ACOES and str(i).strip().isdigit()}
+    return cfg
+
+
+def _gravar_json(caminho: str, dados: dict) -> None:
+    tmp = caminho + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(dados, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, caminho)  # o painel nunca le o arquivo pela metade
+
+
 def main():
+    global ATRASO
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument("--intervalo", type=float, default=20)
     ap.add_argument("--rodadas", type=int, default=0, help="0 = sem fim")
     ap.add_argument("--bancos", default="labvida,erp_rh,prontosul", help=f"entre {','.join(ACOES)}")
     ap.add_argument("--reler", type=_conexoes, default={},
                     help="banco=id_connection,...: depois de cada escrita pede a releitura da conexao (demo)")
+    ap.add_argument("--controle", help="config.json do painel, relido a cada rodada; estado.json ao lado")
     a = ap.parse_args()
-    engines = {b: create_engine(URLS[b], pool_pre_ping=True) for b in a.bancos.split(",")}
+    # docker stop manda SIGTERM ao PID 1, que o Python ignora sem handler: sem isto o painel espera o SIGKILL
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    padrao = {"intervalo": a.intervalo, "atraso_pct": ATRASO * 100, "bancos": a.bancos.split(","), "reler": a.reler}
+    estado_path = os.path.join(os.path.dirname(a.controle), "estado.json") if a.controle else None
+    estado = {"inicio": datetime.now().isoformat(timespec="seconds"), "rodada": 0, "bancos": {}, "eventos": []}
+    engines = {}
     n = 0
     while not a.rodadas or n < a.rodadas:
         n += 1
-        for b, eng in engines.items():
+        cfg = _ler_controle(a.controle, padrao) if a.controle else padrao
+        ATRASO = cfg["atraso_pct"] / 100
+        for b in cfg["bancos"]:
+            if b not in engines:
+                engines[b] = create_engine(URLS[b], pool_pre_ping=True)
+            cont = estado["bancos"].setdefault(b, {"ok": 0, "falhas": 0, "ultimo": None, "quando": None})
+            agora = f"{datetime.now():%H:%M:%S}"
             try:
-                with eng.begin() as c:
+                with engines[b].begin() as c:
                     feito = ACOES[b](c)
                 # depois do commit: pedir antes faria a releitura ler o banco sem a escrita
-                pedido = f"; releitura {reler(a.reler[b])}" if b in a.reler else ""
-                print(f"[{datetime.now():%H:%M:%S}] {b}: {feito}{pedido}", flush=True)
+                pedido = f"; releitura {reler(cfg['reler'][b])}" if b in cfg["reler"] else ""
+                linha, cont["ok"] = f"{feito}{pedido}", cont["ok"] + 1
+                ok = True
             except Exception as e:  # banco fora do ar: tenta na proxima rodada
-                print(f"[{datetime.now():%H:%M:%S}] {b}: falhou ({type(e).__name__}: {str(e).splitlines()[0][:120]})",
-                      flush=True)
+                linha, cont["falhas"] = f"falhou ({type(e).__name__}: {str(e).splitlines()[0][:120]})", cont["falhas"] + 1
+                ok = False
+            cont["ultimo"], cont["quando"] = linha, agora
+            estado["eventos"] = ([{"quando": agora, "banco": b, "ok": ok, "texto": linha}] + estado["eventos"])[:40]
+            print(f"[{agora}] {b}: {linha}", flush=True)
+        if estado_path:
+            estado.update(rodada=n, config=cfg, proxima=(datetime.now() + timedelta(seconds=cfg["intervalo"]))
+                          .isoformat(timespec="seconds"))
+            try:
+                _gravar_json(estado_path, estado)
+            except OSError as e:  # o estado e so para a tela; escrita no banco segue
+                print(f"estado.json nao gravado: {e}", flush=True)
         if not a.rodadas or n < a.rodadas:
-            time.sleep(a.intervalo)
+            _esperar(cfg["intervalo"], a.controle)
+
+
+def _mtime(caminho):
+    try:
+        return os.path.getmtime(caminho)
+    except OSError:
+        return None
+
+
+def _esperar(segundos: float, controle) -> None:
+    """Dorme o intervalo, mas acorda antes se o painel gravar config nova (mudar 300 s para 5 s vale na hora)."""
+    if not controle:
+        time.sleep(segundos)
+        return
+    antes, fim = _mtime(controle), time.monotonic() + segundos
+    while time.monotonic() < fim:
+        time.sleep(min(1.0, fim - time.monotonic()))
+        if _mtime(controle) != antes:
+            return
 
 
 if __name__ == "__main__":

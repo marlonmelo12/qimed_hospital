@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hospital simulado</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --tx: #1c2430; --mut: #5f6b7a; --bd: #dfe3e8;
+    --ok: #1a7f4b; --okbg: #e3f4ea; --warn: #9a6400; --warnbg: #fdf1d8; --err: #b42318; --errbg: #fde7e5;
+    --off: #6b7280; --offbg: #eef0f3; --acc: #2457c5; --accbg: #e6edfb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161c; --card: #1a2029; --tx: #e6e9ee; --mut: #9aa5b4; --bd: #2c3541;
+      --ok: #5cd08f; --okbg: #173325; --warn: #f0b955; --warnbg: #3a2c12; --err: #ff8a80; --errbg: #3d1c1a;
+      --off: #9aa5b4; --offbg: #242c37; --acc: #8fb0ff; --accbg: #1f2a44;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--tx); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  .mut { color: var(--mut); }
+  .card { background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 16px; margin-bottom: 18px; }
+  .tbl { width: 100%; border-collapse: collapse; }
+  .tbl th { text-align: left; font-weight: 600; color: var(--mut); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--bd); }
+  .tbl td { padding: 8px; border-bottom: 1px solid var(--bd); vertical-align: middle; }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .scroll { overflow-x: auto; }
+  .pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .p-saudavel, .p-rodando { color: var(--ok); background: var(--okbg); }
+  .p-subindo, .p-acao { color: var(--warn); background: var(--warnbg); }
+  .p-doente, .p-erro { color: var(--err); background: var(--errbg); }
+  .p-parado, .p-ausente { color: var(--off); background: var(--offbg); }
+  button { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--bd);
+           background: var(--card); color: var(--tx); cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--acc); color: var(--acc); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.pri { background: var(--acc); color: #fff; border-color: var(--acc); }
+  button.pri:hover:not(:disabled) { color: #fff; filter: brightness(1.1); }
+  button.perigo:hover:not(:disabled) { border-color: var(--err); color: var(--err); }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .erro { color: var(--err); font-size: 12px; white-space: pre-wrap; max-width: 520px; margin-top: 4px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .banco { border: 1px solid var(--bd); border-radius: 8px; padding: 12px; }
+  .banco h3 { font-size: 14px; margin: 0 0 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .num { font-variant-numeric: tabular-nums; }
+  .linha { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  label { display: inline-flex; align-items: center; gap: 6px; }
+  input[type=number] { width: 80px; font: inherit; padding: 3px 6px; border: 1px solid var(--bd); border-radius: 6px; background: var(--bg); color: var(--tx); }
+  .eventos { max-height: 260px; overflow-y: auto; font: 12px/1.5 ui-monospace, Consolas, monospace; }
+  .ev-falha { color: var(--err); }
+  pre { margin: 0; max-height: 360px; overflow: auto; font: 12px/1.45 ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+  .aviso { padding: 10px 12px; border-radius: 8px; background: var(--errbg); color: var(--err); margin-bottom: 16px; }
+  .small { font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Hospital simulado</h1>
+    <span class="mut small" id="mem"></span>
+  </header>
+  <div id="aviso"></div>
+
+  <section class="card">
+    <h2>Sistemas</h2>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr><th>Sistema</th><th>Banco</th><th>Porta</th><th>Situação</th><th>RAM</th><th></th></tr></thead>
+        <tbody id="sistemas"></tbody>
+      </table>
+    </div>
+    <p class="mut small" style="margin:10px 0 0">Resetar apaga os dados do sistema e recarrega o seed. Os Oracle usam cerca de 2,4 GB de RAM cada.</p>
+  </section>
+
+  <section class="card">
+    <h2>Fluxo de dados</h2>
+    <div class="linha">
+      <span id="sim-estado"></span>
+      <button class="pri" id="sim-iniciar">Iniciar simulador</button>
+      <button id="sim-parar">Parar</button>
+      <button id="sim-log">Log</button>
+      <span class="mut small" id="sim-rodada"></span>
+    </div>
+    <div class="linha">
+      <label>Intervalo (s) <input type="number" id="cfg-intervalo" min="2" step="1"></label>
+      <label>Escritas atrasadas (%) <input type="number" id="cfg-atraso" min="0" max="100" step="5"></label>
+      <button id="cfg-salvar">Aplicar</button>
+      <span class="mut small" id="cfg-msg"></span>
+    </div>
+    <div class="grid" id="bancos"></div>
+    <h2 style="margin-top:18px">Últimos eventos</h2>
+    <div class="eventos" id="eventos"><span class="mut">Nenhum evento ainda.</span></div>
+  </section>
+
+  <section class="card" id="log-card" hidden>
+    <div class="linha" style="margin-bottom:8px"><h2 style="margin:0" id="log-titulo">Log</h2>
+      <button id="log-atualizar">Atualizar</button><button id="log-fechar">Fechar</button></div>
+    <pre id="log"></pre>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const ROTULO = {saudavel: "saudável", rodando: "rodando", subindo: "subindo", doente: "com problema",
+                parado: "parado", ausente: "não criado"};
+const VERBO = {subir: "subindo", derrubar: "derrubando", resetar: "resetando"};
+let ultimo = null, editandoCfg = false, logAlvo = null;
+
+async function api(rota, corpo) {
+  const op = corpo ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(corpo)} : {};
+  const r = await fetch(rota, op);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.erro || `HTTP ${r.status}`);
+  return j;
+}
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const pill = (cls, txt) => `<span class="pill p-${cls}">${esc(txt)}</span>`;
+
+function gb(b) { return b ? (b / 1024 ** 3).toFixed(1) + " GB" : "?"; }
+
+function render(e) {
+  ultimo = e;
+  $("aviso").innerHTML = e.docker_ok ? "" : `<div class="aviso">O Docker não respondeu. Abra o Docker Desktop e espere ele subir.</div>`;
+  $("mem").textContent = e.memoria.total ? `Docker com ${gb(e.memoria.total)} de RAM` + (e.memoria.quando ? ` · uso medido às ${e.memoria.quando}` : "") : "";
+
+  $("sistemas").innerHTML = e.sistemas.map(s => {
+    const sit = s.acao ? pill("acao", VERBO[s.acao] + "…") : pill(s.situacao, ROTULO[s.situacao]);
+    const ligado = ["saudavel", "rodando", "subindo", "doente"].includes(s.situacao);
+    const ocupado = !!s.acao;
+    return `<tr>
+      <td><strong>${esc(s.nome)}</strong><div class="mut small">${esc(s.pasta)}${s.movimento ? " · com movimento" : ""}</div>
+          ${s.erro ? `<div class="erro">${esc(s.erro)}</div>` : ""}</td>
+      <td>${esc(s.banco)}</td>
+      <td class="num">${s.porta}</td>
+      <td title="${esc(s.status)}">${sit}</td>
+      <td class="num">${esc(s.memoria || "")}</td>
+      <td><div class="btns">
+        <button data-acao="subir" data-pasta="${s.pasta}" ${ocupado || ligado ? "disabled" : ""}>Subir</button>
+        <button data-acao="derrubar" data-pasta="${s.pasta}" ${ocupado || !ligado ? "disabled" : ""}>Derrubar</button>
+        <button class="perigo" data-acao="resetar" data-pasta="${s.pasta}" ${ocupado ? "disabled" : ""}>Resetar</button>
+        <button data-log="${s.pasta}" ${s.situacao === "ausente" ? "disabled" : ""}>Log</button>
+      </div></td></tr>`;
+  }).join("");
+
+  const sim = e.simulador, est = sim.estado, cfg = sim.config;
+  $("sim-estado").innerHTML = sim.rodando ? pill("rodando", "simulador rodando") : pill("parado", "simulador parado");
+  $("sim-iniciar").disabled = sim.rodando;
+  $("sim-parar").disabled = !sim.rodando;
+  $("sim-rodada").textContent = sim.rodando && est ? `rodada ${est.rodada} · próxima às ${(est.proxima || "").slice(11)}` : "";
+  if (!editandoCfg) { $("cfg-intervalo").value = cfg.intervalo; $("cfg-atraso").value = cfg.atraso_pct; }
+
+  const porPasta = Object.fromEntries(e.sistemas.map(s => [s.pasta, s]));
+  $("bancos").innerHTML = Object.entries(sim.bancos).map(([b, pasta]) => {
+    const s = porPasta[pasta], c = (est && est.bancos[b]) || null, ligado = !!cfg.bancos[b];
+    const no_ar = ["saudavel", "rodando"].includes(s.situacao);
+    return `<div class="banco">
+      <h3>${esc(s.nome)} <label class="small"><input type="checkbox" data-banco="${b}" ${ligado ? "checked" : ""}> movimento</label></h3>
+      <div class="small">${no_ar ? "" : `<span class="pill p-parado">banco ${esc(ROTULO[s.situacao])}</span> `}
+        <span class="num">${c ? `${c.ok} escritas · ${c.falhas} falhas` : "sem escrita ainda"}</span></div>
+      ${c && c.ultimo ? `<div class="mut small" style="margin-top:4px">${esc(c.quando)} · ${esc(c.ultimo)}</div>` : ""}
+      <label class="small" style="margin-top:8px">Releitura imediata, conexão nº
+        <input type="number" min="1" data-reler="${b}" value="${esc(cfg.reler[b] ?? "")}" placeholder="—" style="width:70px"></label>
+    </div>`;
+  }).join("");
+
+  const evs = (est && est.eventos) || [];
+  $("eventos").innerHTML = evs.length ? evs.map(v =>
+    `<div class="${v.ok ? "" : "ev-falha"}">${esc(v.quando)}  ${esc(v.banco.padEnd(10))} ${esc(v.texto)}</div>`).join("")
+    : `<span class="mut">Nenhum evento ainda.</span>`;
+}
+
+async function atualizar() {
+  try { render(await api("/api/estado")); }
+  catch (err) { $("aviso").innerHTML = `<div class="aviso">Painel fora do ar: ${esc(err.message)}</div>`; }
+}
+
+function cfgDaTela() {
+  const bancos = {}, reler = {};
+  document.querySelectorAll("[data-banco]").forEach(i => bancos[i.dataset.banco] = i.checked);
+  document.querySelectorAll("[data-reler]").forEach(i => { if (i.value.trim()) reler[i.dataset.reler] = Number(i.value); });
+  return {intervalo: Number($("cfg-intervalo").value), atraso_pct: Number($("cfg-atraso").value), bancos, reler};
+}
+async function salvarCfg() {
+  try { await api("/api/config", cfgDaTela()); $("cfg-msg").textContent = "aplicado"; }
+  catch (err) { $("cfg-msg").textContent = err.message; }
+  editandoCfg = false;
+  setTimeout(() => $("cfg-msg").textContent = "", 2500);
+  atualizar();
+}
+
+async function mostrarLog(alvo) {
+  logAlvo = alvo;
+  $("log-card").hidden = false;
+  $("log-titulo").textContent = `Log: ${alvo}`;
+  $("log").textContent = "carregando…";
+  try { $("log").textContent = (await api(`/api/log?alvo=${encodeURIComponent(alvo)}`)).log; }
+  catch (err) { $("log").textContent = err.message; }
+  $("log").scrollTop = $("log").scrollHeight;
+}
+
+document.addEventListener("click", async ev => {
+  const b = ev.target.closest("button");
+  if (!b) return;
+  if (b.dataset.acao) {
+    const s = ultimo.sistemas.find(x => x.pasta === b.dataset.pasta);
+    if (b.dataset.acao === "resetar" && !confirm(`Resetar ${s.nome}? Os dados voltam ao seed.`)) return;
+    b.disabled = true;
+    try { await api("/api/sistema", {pasta: b.dataset.pasta, acao: b.dataset.acao}); } catch (err) { alert(err.message); }
+    atualizar();
+  } else if (b.dataset.log) {
+    mostrarLog(b.dataset.log);
+  }
+});
+document.addEventListener("change", ev => { if (ev.target.matches("[data-banco]")) salvarCfg(); });
+document.addEventListener("focusin", ev => { if (ev.target.matches("input[type=number]")) editandoCfg = true; });
+// sair do campo aplica: senao a tela ficaria congelada (o polling para enquanto se edita)
+document.addEventListener("focusout", ev => { if (ev.target.matches("input[type=number]")) salvarCfg(); });
+document.addEventListener("keydown", ev => { if (ev.key === "Enter" && ev.target.matches("input[type=number]")) ev.target.blur(); });
+$("cfg-salvar").onclick = salvarCfg;
+$("sim-iniciar").onclick = async () => { try { await api("/api/simulador", {acao: "iniciar"}); } catch (err) { alert(err.message); } atualizar(); };
+$("sim-parar").onclick = async () => { $("sim-parar").disabled = true; try { await api("/api/simulador", {acao: "parar"}); } catch (err) { alert(err.message); } atualizar(); };
+$("sim-log").onclick = () => mostrarLog("simulador");
+$("log-atualizar").onclick = () => logAlvo && mostrarLog(logAlvo);
+$("log-fechar").onclick = () => { $("log-card").hidden = true; logAlvo = null; };
+
+atualizar();
+setInterval(() => { if (!editandoCfg) atualizar(); }, 3000);
+</script>
+</body>
+</html>

@@ -34,6 +34,19 @@ docker compose -f tasy/docker-compose.yml down -v      # a próxima subida recar
 
 Os Oracle (ProntoSul e MV) pesam cerca de 2,4 GB de RAM cada.
 
+## Painel
+
+```sh
+python painel/painel.py        # http://127.0.0.1:8099, só biblioteca padrão
+```
+
+Sobe, derruba e reseta cada sistema, mostra a situação e a RAM de cada um, e controla o `simular_movimento.py`:
+banco por banco, intervalo, fração de escritas atrasadas e releitura imediata por conexão. A mudança vale na rodada
+seguinte, sem reiniciar. O simulador roda na imagem do pipeline (`QIMED_PIPELINE_IMAGE`, padrão
+`qimed_pipeline-qimed-pipeline:latest`), num container `qimed-simulador` na rede `qimed-network`. Painel e simulador
+trocam `painel/estado/config.json` e `estado.json`, fora do git. Hoje só LabVida, ERP de RH, ProntoSul e MV têm
+movimento.
+
 ## Comandos que rodam na imagem do pipeline
 
 Os geradores de seed são Python puro. O `simular_movimento.py` e a fábrica do OpenEMR usam drivers e código da
