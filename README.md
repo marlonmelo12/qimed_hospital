@@ -23,6 +23,49 @@ que rodam na imagem do pipeline: o `simular_movimento.py` e a fábrica do OpenEM
 
 Cada pasta tem um README com o modelo, os números esperados e como regerar o seed.
 
+## Passo a passo rápido
+
+Você só precisa do Docker Desktop aberto. Os comandos rodam no terminal, dentro desta pasta.
+
+1. Crie a rede uma vez só (se ela já existir, o erro pode ser ignorado):
+
+   ```sh
+   docker network create qimed-network
+   ```
+
+2. Ligue o sistema que quiser, trocando `labvida` pelo nome da pasta. O comando termina quando o banco está pronto:
+
+   ```sh
+   docker compose -f labvida/docker-compose.yml up -d --wait
+   ```
+
+3. Na Central de Conexões do QIMED, cadastre a conexão com os dados da tabela abaixo.
+
+4. Para desligar e apagar os dados (na próxima vez o banco volta do zero):
+
+   ```sh
+   docker compose -f labvida/docker-compose.yml down -v
+   ```
+
+| Sistema | Tipo | Host | Porta | Banco | Usuário | Senha |
+|---|---|---|---|---|---|---|
+| `gnuhealth` | POSTGRESQL | gnuhealth-db | 5432 | gnuhealth | qimed_leitura | leitura_mock |
+| `labvida` | POSTGRESQL | labvida-db | 5432 | labvida | labvida | labvida_mock |
+| `openelis` | POSTGRESQL | openelis-db | 5432 | clinlims | qimed_leitura | leitura_mock |
+| `labvida_sqlserver` | SQLSERVER | labvida-sqlserver-db | 1433 | labvida | qimed_leitura | leitura_mock |
+| `erp_rh` | MYSQL | erp-rh-db | 3306 | erp_rh | erp | erp_mock |
+| `frappe_hrms` | MYSQL | frappe-db | 3306 | frappe_hrms | qimed_leitura | leitura_mock |
+| `openemr` | MYSQL | openemr-db | 3306 | openemr | qimed_leitura | leitura_mock |
+| `prontosul` | ORACLE | prontosul-db | 1521 | FREEPDB1 | qimed_leitura | leitura_mock |
+| `mv_faturamento` | ORACLE | mv-db | 1521 | XE | qimed_leitura | leitura_mock |
+
+O LabVida e o ERP usam o usuário dono do banco de propósito, para a Central mostrar o aviso de usuário que escreve.
+
+Cuidados:
+- O TASY (`tasy/`) não entra pela Central: ele é a base do hospital e o pipeline o lê sozinho. Ligue-o primeiro.
+- Não ligue tudo ao mesmo tempo. Cada Oracle (ProntoSul e MV) usa cerca de 2,4 GB de RAM; ligue no máximo um deles.
+- O primeiro `up` de cada sistema baixa a imagem e pode levar alguns minutos.
+
 ## Subir um sistema
 
 Na raiz deste repo, com a rede do pipeline criada (`docker network create qimed-network`):
