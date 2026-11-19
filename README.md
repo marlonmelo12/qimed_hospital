@@ -63,6 +63,16 @@ Você só precisa do Docker Desktop aberto. Os comandos rodam no terminal, dentr
 O TASY, o LabVida e o ERP usam o usuário dono do banco de propósito, para a Central mostrar o aviso de usuário que
 escreve.
 
+Atalho: em vez dos comandos dos passos 2 e 4, use o painel. Ele não sobe sozinho; rode nesta pasta e deixe o
+terminal aberto:
+
+```sh
+python painel/painel.py
+```
+
+Abra http://127.0.0.1:8099 e use os botões Subir, Derrubar e Resetar de cada sistema; o Iniciar simulador gera
+movimento nos bancos.
+
 Cuidados:
 - Nenhum sistema é obrigatório: cada um funciona sozinho na Central. O TASY é o sistema principal do hospital (dono
   dos pacientes e atendimentos) e os outros têm pacientes com o mesmo CPF dele. Ligue e cadastre o TASY se quiser
