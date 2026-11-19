@@ -29,17 +29,17 @@ SIMULADOR = "qimed-simulador"
 
 # pasta, nome, banco, container, porta no host, banco do simulador (None = ainda sem movimento)
 SISTEMAS = [
-    ("tasy", "TASY (HIS e faturamento)", "MariaDB", "qimed-tasy-db", 3307, None),
+    ("tasy", "TASY (HIS e faturamento)", "MariaDB", "qimed-tasy-db", 3307, "tasy"),
     ("pep_fhir", "PEP FHIR", "HAPI FHIR", "qimed-pep-fhir", 8091, None),
-    ("gnuhealth", "GNU Health", "Postgres", "qimed-gnuhealth-central-db", 5437, None),
+    ("gnuhealth", "GNU Health", "Postgres", "qimed-gnuhealth-central-db", 5437, "gnuhealth"),
     ("labvida", "LabVida (laboratório)", "Postgres", "qimed-labvida-db", 5436, "labvida"),
-    ("openelis", "OpenELIS 3.3", "Postgres", "qimed-openelis-db", 5438, None),
-    ("labvida_sqlserver", "LabVida SQL Server", "SQL Server 2022", "qimed-labvida-sqlserver-db", 1434, None),
+    ("openelis", "OpenELIS 3.3", "Postgres", "qimed-openelis-db", 5438, "openelis"),
+    ("labvida_sqlserver", "LabVida SQL Server", "SQL Server 2022", "qimed-labvida-sqlserver-db", 1434, "labvida_sqlserver"),
     ("erp_rh", "ERP de RH e ponto", "MariaDB", "qimed-erp-rh-db", 3308, "erp_rh"),
-    ("frappe_hrms", "Frappe HRMS", "MariaDB", "qimed-frappe-db", 3311, None),
+    ("frappe_hrms", "Frappe HRMS", "MariaDB", "qimed-frappe-db", 3311, "frappe_hrms"),
     ("prontosul", "ProntoSul (pronto-atendimento)", "Oracle 23", "qimed-prontosul-db", 1522, "prontosul"),
     ("mv_faturamento", "MV faturamento (São Lucas)", "Oracle 11g", "qimed-mv-db", 1523, "mv"),
-    ("openemr", "OpenEMR 8.5", "MariaDB", "qimed-openemr-db", 3310, None),
+    ("openemr", "OpenEMR 8.5", "MariaDB", "qimed-openemr-db", 3310, "openemr"),
 ]
 PASTAS = {s[0]: s for s in SISTEMAS}
 BANCOS_SIM = {s[5]: s[0] for s in SISTEMAS if s[5]}

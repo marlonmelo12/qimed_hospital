@@ -103,12 +103,12 @@ Sobe, derruba e reseta cada sistema, mostra a situação e a RAM de cada um, e c
 banco por banco, intervalo, fração de escritas atrasadas e releitura imediata por conexão. A mudança vale na rodada
 seguinte, sem reiniciar. O simulador roda na imagem do pipeline (`QIMED_PIPELINE_IMAGE`, padrão
 `qimed_pipeline-qimed-pipeline:latest`), num container `qimed-simulador` na rede `qimed-network`. Painel e simulador
-trocam `painel/estado/config.json` e `estado.json`, fora do git. Hoje só LabVida, ERP de RH, ProntoSul e MV têm
-movimento.
+trocam `painel/estado/config.json` e `estado.json`, fora do git. Todos os bancos têm movimento, menos o PEP FHIR. No
+OpenELIS o movimento só libera os 108 pedidos coletados do dump: depois de umas 54 rodadas ele para.
 
-Cenários de demo, por 5 min, 15 min ou 1 h: **onda de faltas** (40% de ausência no ERP, contra 7%), **pico de
-atendimentos** (5 vezes mais entradas no LabVida, ProntoSul e MV) e **exclusões na origem** (5 pedidos apagados por
-rodada no LabVida). **Coluna nova** cria `observacao_HHMMSS` uma vez, numa tabela que o simulador não insere por
+Cenários de demo, por 5 min, 15 min ou 1 h: **onda de faltas** (40% de ausência no ERP, no Frappe e nas escalas do
+TASY, contra 7%), **pico de atendimentos** (5 vezes mais escrita em todos os bancos, menos os de RH) e **exclusões na
+origem** (5 pedidos apagados por rodada no LabVida e no LabVida SQL Server). **Coluna nova** cria `observacao_HHMMSS` uma vez, numa tabela que o simulador não insere por
 posição; na próxima releitura a Central volta a pedir aprovação. Só o Resetar tira a coluna. Banco fora do ar é o
 botão Derrubar.
 
