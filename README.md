@@ -9,7 +9,7 @@ que rodam na imagem do pipeline: o `simular_movimento.py` e a fábrica do OpenEM
 
 | Pasta | Sistema | Banco | Como o QIMED lê |
 |---|---|---|---|
-| `tasy/` | HIS e faturamento no estilo TASY | MariaDB | YAML do pipeline (DAG `qimed_hospital_tasy`) |
+| `tasy/` | HIS e faturamento no estilo TASY | MariaDB | Central de Conexões ou YAML do pipeline (DAG `qimed_hospital_tasy`) |
 | `pep_fhir/` | Prontuário FHIR R4 do mesmo hospital | HAPI FHIR | YAML do pipeline |
 | `gnuhealth/` | GNU Health real | Postgres | Central de Conexões |
 | `labvida/` | Laboratório | Postgres | Central de Conexões |
@@ -49,6 +49,7 @@ Você só precisa do Docker Desktop aberto. Os comandos rodam no terminal, dentr
 
 | Sistema | Tipo | Host | Porta | Banco | Usuário | Senha |
 |---|---|---|---|---|---|---|
+| `tasy` | MYSQL | tasy-db | 3306 | TASY | tasy | tasy_mock |
 | `gnuhealth` | POSTGRESQL | gnuhealth-db | 5432 | gnuhealth | qimed_leitura | leitura_mock |
 | `labvida` | POSTGRESQL | labvida-db | 5432 | labvida | labvida | labvida_mock |
 | `openelis` | POSTGRESQL | openelis-db | 5432 | clinlims | qimed_leitura | leitura_mock |
@@ -59,10 +60,15 @@ Você só precisa do Docker Desktop aberto. Os comandos rodam no terminal, dentr
 | `prontosul` | ORACLE | prontosul-db | 1521 | FREEPDB1 | qimed_leitura | leitura_mock |
 | `mv_faturamento` | ORACLE | mv-db | 1521 | XE | qimed_leitura | leitura_mock |
 
-O LabVida e o ERP usam o usuário dono do banco de propósito, para a Central mostrar o aviso de usuário que escreve.
+O TASY, o LabVida e o ERP usam o usuário dono do banco de propósito, para a Central mostrar o aviso de usuário que
+escreve.
 
 Cuidados:
-- O TASY (`tasy/`) não entra pela Central: ele é a base do hospital e o pipeline o lê sozinho. Ligue-o primeiro.
+- Nenhum sistema é obrigatório: cada um funciona sozinho na Central. O TASY é o sistema principal do hospital (dono
+  dos pacientes e atendimentos) e os outros têm pacientes com o mesmo CPF dele. Ligue e cadastre o TASY se quiser
+  ver o vínculo de pacientes entre sistemas e a conta por atendimento.
+- O TASY também pode ser lido sem a Central, pelo YAML do pipeline (DAG `qimed_hospital_tasy`). Use um caminho só,
+  para não carregar o mesmo hospital duas vezes.
 - Não ligue tudo ao mesmo tempo. Cada Oracle (ProntoSul e MV) usa cerca de 2,4 GB de RAM; ligue no máximo um deles.
 - O primeiro `up` de cada sistema baixa a imagem e pode levar alguns minutos.
 
